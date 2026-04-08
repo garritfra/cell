@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use crate::model::{Sheet, CellValue};
+use crate::model::Sheet;
 
 const MAX_COL_WIDTH: u16 = 40;
 const DEFAULT_COL_WIDTH: u16 = 10;

@@ -58,7 +58,7 @@ impl<'a> Widget for Grid<'a> {
             for &(col, col_x, col_w) in &visible_cols {
                 let pos = (row, col);
                 let is_cursor = pos == self.cursor;
-                let is_selected = self.selection.map_or(false, |(start, end)| {
+                let is_selected = self.selection.is_some_and(|(start, end)| {
                     row >= start.0 && row <= end.0 && col >= start.1 && col <= end.1
                 });
                 let style = if is_cursor { cursor_style }

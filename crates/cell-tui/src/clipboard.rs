@@ -1,4 +1,4 @@
-use cell_core::model::{CellPos, col_index_to_label, col_label_to_index};
+use cell_core::model::{col_index_to_label, col_label_to_index};
 use cell_core::formula::token::{Token, tokenize};
 
 #[derive(Debug, Clone)]

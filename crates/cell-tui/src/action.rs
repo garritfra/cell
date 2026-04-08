@@ -8,17 +8,21 @@ pub enum Direction {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SearchDirection {
-    Forward, Backward,
+    Forward,
+    #[allow(dead_code)]
+    Backward,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Noop,
     MoveCursor(Direction),
+    #[allow(dead_code)]
     MoveCursorTo(CellPos),
     EditCell(CellPos, String),
     ClearCell(CellPos),
     ClearRange { start: CellPos, end: CellPos },
+    #[allow(dead_code)]
     YankCell(CellPos),
     YankRange { start: CellPos, end: CellPos },
     Paste(CellPos),
@@ -31,9 +35,11 @@ pub enum Action {
     Open(PathBuf),
     Quit { force: bool },
     Sort { col: usize, ascending: bool },
+    #[allow(dead_code)]
     Search { pattern: String, direction: SearchDirection },
     SearchNext,
     SearchPrev,
+    #[allow(dead_code)]
     Resize,
     PageDown,
     PageUp,

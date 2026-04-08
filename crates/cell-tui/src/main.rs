@@ -10,13 +10,13 @@ use std::io;
 use std::path::PathBuf;
 use clap::Parser;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use app::{App, FileFormat};
-use action::{Action, Mode, Direction};
+use action::{Action, Mode};
 
 #[derive(Parser)]
 #[command(name = "cell", version, about = "A terminal spreadsheet editor")]
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     result
 }
 
-fn load_file(app: &mut App, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
         "csv" => {
@@ -71,7 +71,7 @@ fn load_file(app: &mut App, path: &PathBuf) -> Result<(), Box<dyn std::error::Er
             app.file_format = FileFormat::Csv;
         }
     }
-    app.file_path = Some(path.clone());
+    app.file_path = Some(path.to_path_buf());
     Ok(())
 }
 

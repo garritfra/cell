@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crate::action::{Action, Mode, SearchDirection};
+use crossterm::event::{KeyCode, KeyEvent};
+use crate::action::Action;
 
 pub fn parse_command(input: &str) -> Action {
     let input = input.trim();
@@ -8,23 +8,21 @@ pub fn parse_command(input: &str) -> Action {
         Action::Quit { force: false }
     } else if input == "q!" {
         Action::Quit { force: true }
-    } else if input == "w" {
+    } else if input == "w" || input == "wq" {
         Action::Save(None)
-    } else if input == "wq" {
-        Action::Save(None)
-    } else if input.starts_with("w ") {
-        let path = input[2..].trim();
+    } else if let Some(stripped) = input.strip_prefix("w ") {
+        let path = stripped.trim();
         Action::Save(Some(PathBuf::from(path)))
-    } else if input.starts_with("w! ") {
-        let path = input[3..].trim();
+    } else if let Some(stripped) = input.strip_prefix("w! ") {
+        let path = stripped.trim();
         Action::ForceSave(Some(PathBuf::from(path)))
     } else if input == "w!" {
         Action::ForceSave(None)
-    } else if input.starts_with("e ") {
-        let path = input[2..].trim();
+    } else if let Some(stripped) = input.strip_prefix("e ") {
+        let path = stripped.trim();
         Action::Open(PathBuf::from(path))
-    } else if input.starts_with("sort ") {
-        parse_sort_command(&input[5..])
+    } else if let Some(stripped) = input.strip_prefix("sort ") {
+        parse_sort_command(stripped)
     } else {
         Action::Noop
     }
@@ -60,6 +58,7 @@ pub enum CommandAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::KeyModifiers;
 
     #[test]
     fn parse_quit() { assert_eq!(parse_command("q"), Action::Quit { force: false }); }

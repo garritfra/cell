@@ -1,5 +1,5 @@
-use std::path::PathBuf;
-use cell_core::model::{Sheet, CellPos, CellValue};
+use std::path::{Path, PathBuf};
+use cell_core::model::{Sheet, CellPos};
 use cell_core::formula::deps::{DepGraph, set_formula, mark_dirty, recalculate};
 use crate::action::{Action, Mode, Direction};
 use crate::viewport::Viewport;
@@ -288,7 +288,7 @@ impl App {
         }
     }
 
-    fn format_from_path(path: &PathBuf) -> FileFormat {
+    fn format_from_path(path: &Path) -> FileFormat {
         match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str() {
             "tsv" => FileFormat::Tsv,
             "cell" => FileFormat::Cell,

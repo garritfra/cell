@@ -10,6 +10,12 @@ pub struct DepGraph {
     pub dependencies: HashMap<CellPos, HashSet<CellPos>>,
 }
 
+impl Default for DepGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DepGraph {
     pub fn new() -> Self {
         DepGraph {

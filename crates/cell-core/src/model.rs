@@ -67,6 +67,12 @@ pub struct Sheet {
     pub col_count: usize,
 }
 
+impl Default for Sheet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sheet {
     pub fn new() -> Self {
         Sheet {

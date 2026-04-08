@@ -1,5 +1,5 @@
 use std::io::{Read, Write, BufRead, BufReader};
-use crate::model::{Sheet, CellValue, CellError, col_index_to_label, col_label_to_index};
+use crate::model::{Sheet, CellValue, col_index_to_label, col_label_to_index};
 
 fn parse_address(addr: &str) -> Option<(usize, usize)> {
     let mut col_end = 0;

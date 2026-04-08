@@ -9,6 +9,7 @@ use cell_core::model::{col_index_to_label, CellPos};
 pub struct FormulaBar<'a> {
     pub cursor: CellPos,
     pub content: &'a str,
+    #[allow(dead_code)]
     pub is_editing: bool,
 }
 

@@ -1,10 +1,11 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use cell_core::model::CellPos;
 use crate::action::{Action, Direction, Mode};
 use crate::app::App;
 
 pub struct VisualState {
     pub anchor: CellPos,
+    #[allow(dead_code)]
     pub is_block: bool,
 }
 
@@ -39,6 +40,7 @@ impl VisualState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::KeyModifiers;
 
     fn key(code: KeyCode) -> KeyEvent { KeyEvent::new(code, KeyModifiers::NONE) }
 

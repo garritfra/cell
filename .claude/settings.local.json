@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.rs)",
+      "Bash(git:*)",
+      "Bash(rustup show:*)",
+      "Read(//root/.cargo/bin/**)",
+      "Bash(~/.cargo/bin/cargo test:*)",
+      "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
+      "Bash(cargo metadata:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); pkgs={p['name']:p['version'] for p in d['packages']}; print\\('ratatui:', pkgs.get\\('ratatui','?'\\)\\); print\\('crossterm:', pkgs.get\\('crossterm','?'\\)\\); print\\('clap:', pkgs.get\\('clap','?'\\)\\)\")",
+      "Bash(cargo build:*)",
+      "Bash(timeout 5 cargo run --bin cell)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)"
+    ]
+  }
+}

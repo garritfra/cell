@@ -1,5 +1,5 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crate::action::{Action, Mode};
+use crossterm::event::{KeyCode, KeyEvent};
+use crate::action::Action;
 use crate::app::App;
 
 pub fn handle_insert_key(key: KeyEvent, app: &App) -> Action {
@@ -43,6 +43,7 @@ pub enum InsertAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::KeyModifiers;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
