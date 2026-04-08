@@ -4,6 +4,7 @@ mod viewport;
 mod clipboard;
 mod undo;
 mod mode;
+mod render;
 
 use std::io;
 use std::path::PathBuf;
