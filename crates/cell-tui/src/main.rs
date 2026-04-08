@@ -79,28 +79,139 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use mode::normal::NormalState;
+    use mode::insert::{handle_insert_key, handle_insert_char, InsertAction};
+    use mode::command::{handle_command_key, parse_command, CommandAction};
+    use mode::visual::VisualState;
+
+    let mut normal_state = NormalState::new();
+    let mut visual_state: Option<VisualState> = None;
+    let mut insert_cursor: usize = 0;
+    let mut search_mode = false;
+    let mut wq_pending = false;
+
     loop {
+        let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
+        app.viewport.visible_rows = grid_height;
+
         terminal.draw(|frame| {
-            let area = frame.area();
-            let block = ratatui::widgets::Block::default()
-                .title(format!(" cell — {:?} ", app.mode));
-            frame.render_widget(block, area);
+            render::render(frame, app);
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
+                app.status_message = None;
+
                 let action = match app.mode {
-                    Mode::Normal => match key.code {
-                        KeyCode::Char('q') => Action::Quit { force: false },
-                        KeyCode::Char('h') => Action::MoveCursor(Direction::Left),
-                        KeyCode::Char('j') => Action::MoveCursor(Direction::Down),
-                        KeyCode::Char('k') => Action::MoveCursor(Direction::Up),
-                        KeyCode::Char('l') => Action::MoveCursor(Direction::Right),
-                        _ => Action::Noop,
-                    },
-                    _ => Action::Noop,
+                    Mode::Normal => normal_state.handle_key(key, app),
+                    Mode::Insert => {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter => {
+                                let edit_action = handle_insert_key(key, app);
+                                app.process_action(edit_action);
+                                Action::ChangeMode(Mode::Normal)
+                            }
+                            _ => {
+                                if let Some(insert_action) = handle_insert_char(key) {
+                                    match insert_action {
+                                        InsertAction::InsertChar(c) => {
+                                            app.insert_buffer.insert(insert_cursor, c);
+                                            insert_cursor += 1;
+                                        }
+                                        InsertAction::Backspace => {
+                                            if insert_cursor > 0 {
+                                                insert_cursor -= 1;
+                                                app.insert_buffer.remove(insert_cursor);
+                                            }
+                                        }
+                                        InsertAction::Delete => {
+                                            if insert_cursor < app.insert_buffer.len() {
+                                                app.insert_buffer.remove(insert_cursor);
+                                            }
+                                        }
+                                        InsertAction::CursorLeft => {
+                                            insert_cursor = insert_cursor.saturating_sub(1);
+                                        }
+                                        InsertAction::CursorRight => {
+                                            insert_cursor = (insert_cursor + 1).min(app.insert_buffer.len());
+                                        }
+                                        InsertAction::CursorHome => { insert_cursor = 0; }
+                                        InsertAction::CursorEnd => { insert_cursor = app.insert_buffer.len(); }
+                                    }
+                                }
+                                Action::Noop
+                            }
+                        }
+                    }
+                    Mode::Visual | Mode::VisualBlock => {
+                        if let Some(ref vs) = visual_state {
+                            let action = vs.handle_key(key, app);
+                            if action == Action::ChangeMode(Mode::Normal) {
+                                visual_state = None;
+                            }
+                            action
+                        } else {
+                            Action::ChangeMode(Mode::Normal)
+                        }
+                    }
+                    Mode::Command => {
+                        let cmd_action = handle_command_key(key, &app.command_line);
+                        match cmd_action {
+                            CommandAction::InsertChar(c) => {
+                                app.command_line.push(c);
+                                Action::Noop
+                            }
+                            CommandAction::Backspace => {
+                                app.command_line.pop();
+                                Action::Noop
+                            }
+                            CommandAction::Execute(cmd) => {
+                                if search_mode {
+                                    search_mode = false;
+                                    let pattern = app.command_line.clone();
+                                    app.command_line.clear();
+                                    app.search_pattern = Some(pattern);
+                                    Action::ChangeMode(Mode::Normal)
+                                } else {
+                                    let is_wq = cmd.trim() == "wq";
+                                    let parsed = parse_command(&cmd);
+                                    app.command_line.clear();
+                                    if is_wq { wq_pending = true; }
+                                    parsed
+                                }
+                            }
+                            CommandAction::Cancel => {
+                                app.command_line.clear();
+                                search_mode = false;
+                                Action::ChangeMode(Mode::Normal)
+                            }
+                            CommandAction::Noop => Action::Noop,
+                        }
+                    }
                 };
+
+                if let Action::ChangeMode(Mode::Visual) = &action {
+                    visual_state = Some(VisualState::new(app.cursor, false));
+                }
+                if let Action::ChangeMode(Mode::VisualBlock) = &action {
+                    visual_state = Some(VisualState::new(app.cursor, true));
+                }
+                if let Action::ChangeMode(Mode::Insert) = &action {
+                    insert_cursor = app.sheet.get_cell(app.cursor)
+                        .map(|c| c.raw.len()).unwrap_or(0);
+                }
+                if let Action::ChangeMode(Mode::Command) = &action {
+                    if key.code == KeyCode::Char('/') {
+                        search_mode = true;
+                    }
+                }
+
                 app.process_action(action);
+
+                if wq_pending && !app.dirty {
+                    app.should_quit = true;
+                    wq_pending = false;
+                }
             }
         }
 
