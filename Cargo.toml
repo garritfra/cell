@@ -1,0 +1,8 @@
+[workspace]
+members = ["crates/cell-core", "crates/cell-tui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"

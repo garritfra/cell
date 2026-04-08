@@ -1,0 +1,10 @@
+[package]
+name = "cell-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+csv = "1.3"
+
+[dev-dependencies]
+pretty_assertions = "1"
