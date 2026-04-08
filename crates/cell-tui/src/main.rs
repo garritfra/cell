@@ -3,6 +3,7 @@ mod action;
 mod viewport;
 mod clipboard;
 mod undo;
+mod mode;
 
 use std::io;
 use std::path::PathBuf;
