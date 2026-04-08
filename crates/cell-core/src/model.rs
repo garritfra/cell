@@ -107,6 +107,39 @@ impl Sheet {
     pub fn clear_cell(&mut self, pos: CellPos) {
         self.cells.remove(&pos);
     }
+
+    pub fn sort_by_column(&mut self, col: usize, ascending: bool) {
+        if self.row_count == 0 { return; }
+
+        let mut row_indices: Vec<usize> = (0..self.row_count).collect();
+
+        row_indices.sort_by(|&a, &b| {
+            let cell_a = self.get_cell((a, col));
+            let cell_b = self.get_cell((b, col));
+
+            let ord = match (cell_a.map(|c| &c.value), cell_b.map(|c| &c.value)) {
+                (Some(CellValue::Number(na)), Some(CellValue::Number(nb))) => {
+                    na.partial_cmp(nb).unwrap_or(std::cmp::Ordering::Equal)
+                }
+                (Some(va), Some(vb)) => va.to_string().cmp(&vb.to_string()),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            };
+
+            if ascending { ord } else { ord.reverse() }
+        });
+
+        let mut new_cells = std::collections::HashMap::new();
+        for (new_row, &old_row) in row_indices.iter().enumerate() {
+            for c in 0..self.col_count {
+                if let Some(cell) = self.cells.get(&(old_row, c)) {
+                    new_cells.insert((new_row, c), cell.clone());
+                }
+            }
+        }
+        self.cells = new_cells;
+    }
 }
 
 pub fn col_index_to_label(mut col: usize) -> String {
@@ -251,5 +284,35 @@ mod tests {
         assert_eq!(CellValue::Number(1.0).to_string(), "1");
         assert_eq!(CellValue::Number(1.10).to_string(), "1.1");
         assert_eq!(CellValue::Number(1.123).to_string(), "1.123");
+    }
+
+    #[test]
+    fn sheet_sort_by_column_ascending() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "Charlie");
+        sheet.set_cell((0, 1), "3");
+        sheet.set_cell((1, 0), "Alice");
+        sheet.set_cell((1, 1), "1");
+        sheet.set_cell((2, 0), "Bob");
+        sheet.set_cell((2, 1), "2");
+        sheet.sort_by_column(0, true);
+        assert_eq!(sheet.get_cell((0, 0)).unwrap().raw, "Alice");
+        assert_eq!(sheet.get_cell((1, 0)).unwrap().raw, "Bob");
+        assert_eq!(sheet.get_cell((2, 0)).unwrap().raw, "Charlie");
+        assert_eq!(sheet.get_cell((0, 1)).unwrap().raw, "1");
+        assert_eq!(sheet.get_cell((1, 1)).unwrap().raw, "2");
+        assert_eq!(sheet.get_cell((2, 1)).unwrap().raw, "3");
+    }
+
+    #[test]
+    fn sheet_sort_numeric_column() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "30");
+        sheet.set_cell((1, 0), "5");
+        sheet.set_cell((2, 0), "100");
+        sheet.sort_by_column(0, true);
+        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Number(5.0));
+        assert_eq!(sheet.get_cell((1, 0)).unwrap().value, CellValue::Number(30.0));
+        assert_eq!(sheet.get_cell((2, 0)).unwrap().value, CellValue::Number(100.0));
     }
 }
