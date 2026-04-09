@@ -22,6 +22,8 @@ pub enum Action {
     EditCell(CellPos, String),
     ClearCell(CellPos),
     ClearRange { start: CellPos, end: CellPos },
+    ChangeCell(CellPos),
+    ChangeRange { start: CellPos, end: CellPos },
     #[allow(dead_code)]
     YankCell(CellPos),
     YankRange { start: CellPos, end: CellPos },

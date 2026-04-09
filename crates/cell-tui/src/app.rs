@@ -111,6 +111,31 @@ impl App {
                     self.dirty = true;
                 }
             }
+            Action::ChangeCell(pos) => {
+                let old_raw = self.sheet.get_cell(pos).map(|c| c.raw.clone()).unwrap_or_default();
+                if !old_raw.is_empty() {
+                    self.undo_stack.push(UndoEntry::CellEdit { pos, old_raw, new_raw: String::new() });
+                    self.sheet.clear_cell(pos);
+                    self.dirty = true;
+                }
+                self.insert_buffer = String::new();
+                self.mode = Mode::Insert;
+            }
+            Action::ChangeRange { start, end } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
+                for row in start.0..=end.0 {
+                    for col in start.1..=max_col {
+                        let old_raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                        if !old_raw.is_empty() {
+                            self.undo_stack.push(UndoEntry::CellEdit { pos: (row, col), old_raw, new_raw: String::new() });
+                            self.sheet.clear_cell((row, col));
+                        }
+                    }
+                }
+                self.dirty = true;
+                self.insert_buffer = String::new();
+                self.mode = Mode::Insert;
+            }
             Action::GotoFirstRow => { self.cursor = (0, self.cursor.1); self.viewport.ensure_visible(self.cursor); }
             Action::GotoLastRow => {
                 let last = if self.sheet.row_count > 0 { self.sheet.row_count - 1 } else { 0 };

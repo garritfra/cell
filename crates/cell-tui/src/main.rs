@@ -154,6 +154,7 @@ fn run_loop(
                                 Action::ChangeMode(Mode::Normal)
                                     | Action::ClearRange { .. }
                                     | Action::YankRange { .. }
+                                    | Action::ChangeRange { .. }
                             );
                             if exits {
                                 visual_state = None;
@@ -210,9 +211,12 @@ fn run_loop(
                 if let Action::ChangeMode(Mode::VisualBlock) = &action {
                     visual_state = Some(VisualState::new(app.cursor, VisualKind::Block));
                 }
-                if let Action::ChangeMode(Mode::Insert) = &action {
+                if matches!(&action, Action::ChangeMode(Mode::Insert)) {
                     insert_cursor = app.sheet.get_cell(app.cursor)
                         .map(|c| c.raw.len()).unwrap_or(0);
+                }
+                if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
+                    insert_cursor = 0;
                 }
                 if let Action::ChangeMode(Mode::Command) = &action {
                     if key.code == KeyCode::Char('/') {

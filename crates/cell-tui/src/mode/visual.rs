@@ -43,6 +43,7 @@ impl VisualState {
             KeyCode::Char('j') | KeyCode::Down => Action::MoveCursor(Direction::Down),
             KeyCode::Char('k') | KeyCode::Up => Action::MoveCursor(Direction::Up),
             KeyCode::Char('l') | KeyCode::Right => Action::MoveCursor(Direction::Right),
+            KeyCode::Char('c') => Action::ChangeRange { start, end },
             KeyCode::Char('d') => Action::ClearRange { start, end },
             KeyCode::Char('y') => Action::YankRange { start, end },
             KeyCode::Esc => Action::ChangeMode(Mode::Normal),

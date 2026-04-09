@@ -53,6 +53,7 @@ impl NormalState {
             KeyCode::Char('v') => Action::ChangeMode(Mode::Visual),
             KeyCode::Char('V') => Action::ChangeMode(Mode::VisualLine),
             KeyCode::Char(':') => Action::ChangeMode(Mode::Command),
+            KeyCode::Char('c') => Action::ChangeCell(app.cursor),
             KeyCode::Char('x') => Action::ClearCell(app.cursor),
             KeyCode::Char('p') => Action::Paste(app.cursor),
             KeyCode::Char('P') => Action::PasteBefore(app.cursor),
