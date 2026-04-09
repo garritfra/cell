@@ -45,28 +45,30 @@ If you know Vim, you know cell.
 
 ### Normal Mode
 
-| Key | Action |
-|-----|--------|
-| `h` `j` `k` `l` | Move cursor |
-| `gg` | First row |
-| `G` | Last row |
-| `0` | First column |
-| `$` | Last column |
-| `Ctrl-D` / `Ctrl-U` | Half-page down/up |
-| `Ctrl-F` / `Ctrl-B` | Full page down/up |
-| `w` / `b` | Next/previous non-empty cell |
-| `i` / `a` / `Enter` | Edit cell (Insert mode) |
-| `x` | Clear cell |
-| `dd` | Delete row |
-| `yy` | Yank row |
-| `p` / `P` | Paste below/above |
-| `u` | Undo |
-| `Ctrl-R` | Redo |
-| `v` | Visual selection |
-| `Ctrl-V` | Visual block selection |
-| `/` | Search |
-| `n` / `N` | Next/previous match |
-| `:` | Command mode |
+
+| Key                 | Action                       |
+| ------------------- | ---------------------------- |
+| `h` `j` `k` `l`     | Move cursor                  |
+| `gg`                | First row                    |
+| `G`                 | Last row                     |
+| `0`                 | First column                 |
+| `$`                 | Last column                  |
+| `Ctrl-D` / `Ctrl-U` | Half-page down/up            |
+| `Ctrl-F` / `Ctrl-B` | Full page down/up            |
+| `w` / `b`           | Next/previous non-empty cell |
+| `i` / `a` / `Enter` | Edit cell (Insert mode)      |
+| `x`                 | Clear cell                   |
+| `dd`                | Delete row                   |
+| `yy`                | Yank row                     |
+| `p` / `P`           | Paste below/above            |
+| `u`                 | Undo                         |
+| `Ctrl-R`            | Redo                         |
+| `v`                 | Visual selection             |
+| `Ctrl-V`            | Visual block selection       |
+| `/`                 | Search                       |
+| `n` / `N`           | Next/previous match          |
+| `:`                 | Command mode                 |
+
 
 ### Insert Mode
 
@@ -78,18 +80,20 @@ Select with `hjkl`, then `y` to yank, `d` to delete.
 
 ### Commands
 
-| Command | Action |
-|---------|--------|
-| `:w` | Save |
-| `:w file.csv` | Save as CSV |
-| `:w file.cell` | Save as native format |
-| `:w!` | Force save (flatten formulas) |
-| `:q` | Quit |
-| `:q!` | Quit without saving |
-| `:wq` | Save and quit |
-| `:e file` | Open file |
-| `:sort A asc` | Sort by column A ascending |
-| `:sort B desc` | Sort by column B descending |
+
+| Command        | Action                        |
+| -------------- | ----------------------------- |
+| `:w`           | Save                          |
+| `:w file.csv`  | Save as CSV                   |
+| `:w file.cell` | Save as native format         |
+| `:w!`          | Force save (flatten formulas) |
+| `:q`           | Quit                          |
+| `:q!`          | Quit without saving           |
+| `:wq`          | Save and quit                 |
+| `:e file`      | Open file                     |
+| `:sort A asc`  | Sort by column A ascending    |
+| `:sort B desc` | Sort by column B descending   |
+
 
 ## Formulas
 
@@ -111,7 +115,7 @@ Formula compliance with the ODF (OpenDocument Formula) spec is tracked and will 
 ## File Formats
 
 - **CSV/TSV** -- Opens and saves standard comma/tab-separated files. Formulas are flattened to their computed values on CSV export.
-- **`.cell`** -- Native format that preserves formulas. Plain text, human-readable, inspired by [sc-im](https://github.com/andmarti1992/sc-im).
+- `**.cell`** -- Native format that preserves formulas. Plain text, human-readable, inspired by [sc-im](https://github.com/andmarti1992/sc-im).
 
 When saving a CSV that contains formulas, cell warns you and suggests saving as `.cell` instead. Use `:w!` to force a CSV save.
 
@@ -128,16 +132,17 @@ The core library is independent of the terminal UI and can be tested without a t
 
 ## Releasing
 
-1. Update the version in [`Cargo.toml`](Cargo.toml) (workspace version) and the `cell-sheet-core` dependency version in [`crates/cell-sheet-tui/Cargo.toml`](crates/cell-sheet-tui/Cargo.toml)
-2. Update [`CHANGELOG.md`](CHANGELOG.md) with the new version's changes
+1. Update the version in `[Cargo.toml](Cargo.toml)` (workspace version)
+2. Update `[CHANGELOG.md](CHANGELOG.md)` with the new version's changes
 3. Commit: `git commit -am "release: bump to vX.Y.Z"`
 4. Tag and push:
-   ```sh
+  ```sh
    git tag vX.Y.Z
    git push origin main --tags
-   ```
+  ```
 
 Pushing a `v*` tag triggers the [release workflow](.github/workflows/release.yml), which:
+
 - Builds binaries for Linux (x86_64, aarch64), macOS (x86_64, aarch64), and Windows (x86_64)
 - Creates a GitHub Release with the binaries attached
 - Publishes `cell-sheet-core` and `cell-sheet-tui` to [crates.io](https://crates.io) via trusted publishing
