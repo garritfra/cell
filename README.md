@@ -126,6 +126,22 @@ cell/
 
 The core library is independent of the terminal UI and can be tested without a terminal.
 
+## Releasing
+
+1. Update the version in [`Cargo.toml`](Cargo.toml) (workspace version) and the `cell-sheet-core` dependency version in [`crates/cell-sheet-tui/Cargo.toml`](crates/cell-sheet-tui/Cargo.toml)
+2. Update [`CHANGELOG.md`](CHANGELOG.md) with the new version's changes
+3. Commit: `git commit -am "release: bump to vX.Y.Z"`
+4. Tag and push:
+   ```sh
+   git tag vX.Y.Z
+   git push origin main --tags
+   ```
+
+Pushing a `v*` tag triggers the [release workflow](.github/workflows/release.yml), which:
+- Builds binaries for Linux (x86_64, aarch64), macOS (x86_64, aarch64), and Windows (x86_64)
+- Creates a GitHub Release with the binaries attached
+- Publishes `cell-sheet-core` and `cell-sheet-tui` to [crates.io](https://crates.io) via trusted publishing
+
 ## License
 
 [MIT](LICENSE)
