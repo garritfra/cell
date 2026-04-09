@@ -1,5 +1,5 @@
 use crate::viewport::Viewport;
-use cell_core::model::{col_index_to_label, CellPos, CellValue, Sheet};
+use cell_sheet_core::model::{col_index_to_label, CellPos, CellValue, Sheet};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

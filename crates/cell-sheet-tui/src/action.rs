@@ -1,4 +1,4 @@
-use cell_core::model::CellPos;
+use cell_sheet_core::model::CellPos;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

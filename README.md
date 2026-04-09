@@ -20,7 +20,7 @@ A terminal spreadsheet editor with Vim keybindings, written in Rust.
 ## Install
 
 ```sh
-cargo install --path crates/cell-tui
+cargo install --path crates/cell-sheet-tui
 ```
 
 Or build from source:
@@ -120,8 +120,8 @@ When saving a CSV that contains formulas, cell warns you and suggests saving as 
 ```
 cell/
   crates/
-    cell-core/    # Data model, formula engine, file I/O (no TUI dependency)
-    cell-tui/     # Ratatui rendering, Vim modes, event loop
+    cell-sheet-core/    # Data model, formula engine, file I/O (no TUI dependency)
+    cell-sheet-tui/     # Ratatui rendering, Vim modes, event loop
 ```
 
 The core library is independent of the terminal UI and can be tested without a terminal.

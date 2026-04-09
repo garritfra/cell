@@ -1,5 +1,5 @@
-use cell_core::formula::token::{tokenize, Token};
-use cell_core::model::{col_index_to_label, col_label_to_index};
+use cell_sheet_core::formula::token::{tokenize, Token};
+use cell_sheet_core::model::{col_index_to_label, col_label_to_index};
 
 #[derive(Debug, Clone)]
 pub enum Register {

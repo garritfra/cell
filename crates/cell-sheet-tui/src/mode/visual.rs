@@ -1,6 +1,6 @@
 use crate::action::{Action, Direction, Mode};
 use crate::app::App;
-use cell_core::model::CellPos;
+use cell_sheet_core::model::CellPos;
 use crossterm::event::{KeyCode, KeyEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
