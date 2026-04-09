@@ -23,6 +23,15 @@ pub fn parse_command(input: &str) -> Action {
         Action::Open(PathBuf::from(path))
     } else if let Some(stripped) = input.strip_prefix("sort ") {
         parse_sort_command(stripped)
+    } else if input == "help" {
+        Action::ShowHelp(None)
+    } else if let Some(stripped) = input.strip_prefix("help ") {
+        let topic = stripped.trim();
+        if topic.is_empty() {
+            Action::ShowHelp(None)
+        } else {
+            Action::ShowHelp(Some(topic.to_string()))
+        }
     } else {
         Action::Noop
     }
@@ -86,6 +95,21 @@ mod tests {
 
     #[test]
     fn parse_wq() { assert_eq!(parse_command("wq"), Action::Save(None)); }
+
+    #[test]
+    fn parse_help_no_topic() {
+        assert_eq!(parse_command("help"), Action::ShowHelp(None));
+    }
+
+    #[test]
+    fn parse_help_with_topic() {
+        assert_eq!(parse_command("help dd"), Action::ShowHelp(Some("dd".into())));
+    }
+
+    #[test]
+    fn parse_help_with_command_topic() {
+        assert_eq!(parse_command("help :w"), Action::ShowHelp(Some(":w".into())));
+    }
 
     fn key(code: KeyCode) -> KeyEvent { KeyEvent::new(code, KeyModifiers::NONE) }
 
