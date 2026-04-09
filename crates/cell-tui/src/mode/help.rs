@@ -1,6 +1,6 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::action::{Action, Mode};
 use crate::app::App;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub struct HelpState {
     pending_g: bool,

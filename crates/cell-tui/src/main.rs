@@ -1,22 +1,22 @@
-mod app;
 mod action;
-mod viewport;
+mod app;
 mod clipboard;
-mod undo;
 mod mode;
 mod render;
+mod undo;
+mod viewport;
 
-use std::io;
-use std::path::PathBuf;
+use action::{Action, Mode};
+use app::{App, FileFormat};
 use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
-use app::{App, FileFormat};
-use action::{Action, Mode};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::io;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "cell", version, about = "A terminal spreadsheet editor")]
@@ -48,9 +48,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    use cell_core::formula::deps::{set_formula, recalculate};
+    use cell_core::formula::deps::{recalculate, set_formula};
 
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
     match ext.as_str() {
         "csv" => {
             let file = std::fs::File::open(path)?;
@@ -76,7 +80,10 @@ fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::e
     app.file_path = Some(path.to_path_buf());
 
     // Register formulas in the dependency graph and evaluate them
-    let formula_cells: Vec<_> = app.sheet.cells.iter()
+    let formula_cells: Vec<_> = app
+        .sheet
+        .cells
+        .iter()
         .filter(|(_, cell)| cell.raw.starts_with('='))
         .map(|(pos, cell)| (*pos, cell.raw.clone()))
         .collect();
@@ -92,11 +99,11 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use mode::normal::NormalState;
-    use mode::insert::{handle_insert_key, handle_insert_char, InsertAction};
     use mode::command::{handle_command_key, parse_command, CommandAction};
-    use mode::visual::{VisualState, VisualKind};
     use mode::help::HelpState;
+    use mode::insert::{handle_insert_char, handle_insert_key, InsertAction};
+    use mode::normal::NormalState;
+    use mode::visual::{VisualKind, VisualState};
 
     let mut normal_state = NormalState::new();
     let mut visual_state: Option<VisualState> = None;
@@ -121,45 +128,48 @@ fn run_loop(
 
                 let action = match app.mode {
                     Mode::Normal => normal_state.handle_key(key, app),
-                    Mode::Insert => {
-                        match key.code {
-                            KeyCode::Esc | KeyCode::Enter => {
-                                let edit_action = handle_insert_key(key, app);
-                                app.process_action(edit_action);
-                                Action::ChangeMode(Mode::Normal)
-                            }
-                            _ => {
-                                if let Some(insert_action) = handle_insert_char(key) {
-                                    match insert_action {
-                                        InsertAction::InsertChar(c) => {
-                                            app.insert_buffer.insert(insert_cursor, c);
-                                            insert_cursor += 1;
+                    Mode::Insert => match key.code {
+                        KeyCode::Esc | KeyCode::Enter => {
+                            let edit_action = handle_insert_key(key, app);
+                            app.process_action(edit_action);
+                            Action::ChangeMode(Mode::Normal)
+                        }
+                        _ => {
+                            if let Some(insert_action) = handle_insert_char(key) {
+                                match insert_action {
+                                    InsertAction::InsertChar(c) => {
+                                        app.insert_buffer.insert(insert_cursor, c);
+                                        insert_cursor += 1;
+                                    }
+                                    InsertAction::Backspace => {
+                                        if insert_cursor > 0 {
+                                            insert_cursor -= 1;
+                                            app.insert_buffer.remove(insert_cursor);
                                         }
-                                        InsertAction::Backspace => {
-                                            if insert_cursor > 0 {
-                                                insert_cursor -= 1;
-                                                app.insert_buffer.remove(insert_cursor);
-                                            }
+                                    }
+                                    InsertAction::Delete => {
+                                        if insert_cursor < app.insert_buffer.len() {
+                                            app.insert_buffer.remove(insert_cursor);
                                         }
-                                        InsertAction::Delete => {
-                                            if insert_cursor < app.insert_buffer.len() {
-                                                app.insert_buffer.remove(insert_cursor);
-                                            }
-                                        }
-                                        InsertAction::CursorLeft => {
-                                            insert_cursor = insert_cursor.saturating_sub(1);
-                                        }
-                                        InsertAction::CursorRight => {
-                                            insert_cursor = (insert_cursor + 1).min(app.insert_buffer.len());
-                                        }
-                                        InsertAction::CursorHome => { insert_cursor = 0; }
-                                        InsertAction::CursorEnd => { insert_cursor = app.insert_buffer.len(); }
+                                    }
+                                    InsertAction::CursorLeft => {
+                                        insert_cursor = insert_cursor.saturating_sub(1);
+                                    }
+                                    InsertAction::CursorRight => {
+                                        insert_cursor =
+                                            (insert_cursor + 1).min(app.insert_buffer.len());
+                                    }
+                                    InsertAction::CursorHome => {
+                                        insert_cursor = 0;
+                                    }
+                                    InsertAction::CursorEnd => {
+                                        insert_cursor = app.insert_buffer.len();
                                     }
                                 }
-                                Action::Noop
                             }
+                            Action::Noop
                         }
-                    }
+                    },
                     Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
                         if let Some(ref vs) = visual_state {
                             let action = vs.handle_key(key, app);
@@ -202,7 +212,9 @@ fn run_loop(
                                     let is_wq = cmd.trim() == "wq";
                                     let parsed = parse_command(&cmd);
                                     app.command_line.clear();
-                                    if is_wq { wq_pending = true; }
+                                    if is_wq {
+                                        wq_pending = true;
+                                    }
                                     parsed
                                 }
                             }
@@ -225,9 +237,12 @@ fn run_loop(
                 if let Action::ChangeMode(Mode::VisualBlock) = &action {
                     visual_state = Some(VisualState::new(app.cursor, VisualKind::Block));
                 }
-                if matches!(&action, Action::ChangeMode(Mode::Insert)) {
-                    insert_cursor = app.sheet.get_cell(app.cursor)
-                        .map(|c| c.raw.len()).unwrap_or(0);
+                if let Action::ChangeMode(Mode::Insert) = &action {
+                    insert_cursor = app
+                        .sheet
+                        .get_cell(app.cursor)
+                        .map(|c| c.raw.len())
+                        .unwrap_or(0);
                 }
                 if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
                     insert_cursor = 0;
@@ -247,7 +262,9 @@ fn run_loop(
             }
         }
 
-        if app.should_quit { break; }
+        if app.should_quit {
+            break;
+        }
     }
     Ok(())
 }

@@ -1,6 +1,6 @@
-use crossterm::event::{KeyCode, KeyEvent};
 use crate::action::Action;
 use crate::app::App;
+use crossterm::event::{KeyCode, KeyEvent};
 
 pub fn handle_insert_key(key: KeyEvent, app: &App) -> Action {
     match key.code {
@@ -67,11 +67,17 @@ mod tests {
 
     #[test]
     fn char_input() {
-        assert_eq!(handle_insert_char(key(KeyCode::Char('a'))), Some(InsertAction::InsertChar('a')));
+        assert_eq!(
+            handle_insert_char(key(KeyCode::Char('a'))),
+            Some(InsertAction::InsertChar('a'))
+        );
     }
 
     #[test]
     fn backspace() {
-        assert_eq!(handle_insert_char(key(KeyCode::Backspace)), Some(InsertAction::Backspace));
+        assert_eq!(
+            handle_insert_char(key(KeyCode::Backspace)),
+            Some(InsertAction::Backspace)
+        );
     }
 }

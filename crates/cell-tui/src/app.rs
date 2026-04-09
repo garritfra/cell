@@ -1,15 +1,17 @@
-use std::path::{Path, PathBuf};
-use cell_core::model::{Sheet, CellPos};
-use cell_core::formula::deps::{DepGraph, set_formula, mark_dirty, recalculate};
-use cell_core::help::HelpRegistry;
-use crate::action::{Action, Mode, Direction};
-use crate::viewport::Viewport;
-use crate::undo::{UndoEntry, UndoStack};
+use crate::action::{Action, Direction, Mode};
 use crate::clipboard::Register;
+use crate::undo::{UndoEntry, UndoStack};
+use crate::viewport::Viewport;
+use cell_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
+use cell_core::help::HelpRegistry;
+use cell_core::model::{CellPos, Sheet};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FileFormat {
-    Csv, Tsv, Cell,
+    Csv,
+    Tsv,
+    Cell,
 }
 
 pub struct App {
@@ -79,8 +81,16 @@ impl App {
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::EditCell(pos, raw) => {
-                let old_raw = self.sheet.get_cell(pos).map(|c| c.raw.clone()).unwrap_or_default();
-                self.undo_stack.push(UndoEntry::CellEdit { pos, old_raw, new_raw: raw.clone() });
+                let old_raw = self
+                    .sheet
+                    .get_cell(pos)
+                    .map(|c| c.raw.clone())
+                    .unwrap_or_default();
+                self.undo_stack.push(UndoEntry::CellEdit {
+                    pos,
+                    old_raw,
+                    new_raw: raw.clone(),
+                });
                 if raw.starts_with('=') {
                     set_formula(&mut self.sheet, &mut self.deps, pos, &raw);
                 } else {
@@ -92,29 +102,50 @@ impl App {
             }
             Action::ChangeMode(mode) => {
                 if mode == Mode::Insert {
-                    self.insert_buffer = self.sheet.get_cell(self.cursor).map(|c| c.raw.clone()).unwrap_or_default();
+                    self.insert_buffer = self
+                        .sheet
+                        .get_cell(self.cursor)
+                        .map(|c| c.raw.clone())
+                        .unwrap_or_default();
                 }
                 self.mode = mode;
             }
             Action::Quit { force } => {
                 if !force && self.dirty {
-                    self.status_message = Some("No write since last change (use :q! to override)".into());
+                    self.status_message =
+                        Some("No write since last change (use :q! to override)".into());
                 } else {
                     self.should_quit = true;
                 }
             }
             Action::ClearCell(pos) => {
-                let old_raw = self.sheet.get_cell(pos).map(|c| c.raw.clone()).unwrap_or_default();
+                let old_raw = self
+                    .sheet
+                    .get_cell(pos)
+                    .map(|c| c.raw.clone())
+                    .unwrap_or_default();
                 if !old_raw.is_empty() {
-                    self.undo_stack.push(UndoEntry::CellEdit { pos, old_raw, new_raw: String::new() });
+                    self.undo_stack.push(UndoEntry::CellEdit {
+                        pos,
+                        old_raw,
+                        new_raw: String::new(),
+                    });
                     self.sheet.clear_cell(pos);
                     self.dirty = true;
                 }
             }
             Action::ChangeCell(pos) => {
-                let old_raw = self.sheet.get_cell(pos).map(|c| c.raw.clone()).unwrap_or_default();
+                let old_raw = self
+                    .sheet
+                    .get_cell(pos)
+                    .map(|c| c.raw.clone())
+                    .unwrap_or_default();
                 if !old_raw.is_empty() {
-                    self.undo_stack.push(UndoEntry::CellEdit { pos, old_raw, new_raw: String::new() });
+                    self.undo_stack.push(UndoEntry::CellEdit {
+                        pos,
+                        old_raw,
+                        new_raw: String::new(),
+                    });
                     self.sheet.clear_cell(pos);
                     self.dirty = true;
                 }
@@ -125,9 +156,17 @@ impl App {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 for row in start.0..=end.0 {
                     for col in start.1..=max_col {
-                        let old_raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                        let old_raw = self
+                            .sheet
+                            .get_cell((row, col))
+                            .map(|c| c.raw.clone())
+                            .unwrap_or_default();
                         if !old_raw.is_empty() {
-                            self.undo_stack.push(UndoEntry::CellEdit { pos: (row, col), old_raw, new_raw: String::new() });
+                            self.undo_stack.push(UndoEntry::CellEdit {
+                                pos: (row, col),
+                                old_raw,
+                                new_raw: String::new(),
+                            });
                             self.sheet.clear_cell((row, col));
                         }
                     }
@@ -136,20 +175,48 @@ impl App {
                 self.insert_buffer = String::new();
                 self.mode = Mode::Insert;
             }
-            Action::GotoFirstRow => { self.cursor = (0, self.cursor.1); self.viewport.ensure_visible(self.cursor); }
+            Action::GotoFirstRow => {
+                self.cursor = (0, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
             Action::GotoLastRow => {
-                let last = if self.sheet.row_count > 0 { self.sheet.row_count - 1 } else { 0 };
-                self.cursor = (last, self.cursor.1); self.viewport.ensure_visible(self.cursor);
+                let last = if self.sheet.row_count > 0 {
+                    self.sheet.row_count - 1
+                } else {
+                    0
+                };
+                self.cursor = (last, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
             }
-            Action::GotoFirstCol => { self.cursor = (self.cursor.0, 0); self.viewport.ensure_visible(self.cursor); }
+            Action::GotoFirstCol => {
+                self.cursor = (self.cursor.0, 0);
+                self.viewport.ensure_visible(self.cursor);
+            }
             Action::GotoLastCol => {
-                let last = if self.sheet.col_count > 0 { self.sheet.col_count - 1 } else { 0 };
-                self.cursor = (self.cursor.0, last); self.viewport.ensure_visible(self.cursor);
+                let last = if self.sheet.col_count > 0 {
+                    self.sheet.col_count - 1
+                } else {
+                    0
+                };
+                self.cursor = (self.cursor.0, last);
+                self.viewport.ensure_visible(self.cursor);
             }
-            Action::HalfPageDown => { self.cursor.0 += self.viewport.visible_rows / 2; self.viewport.ensure_visible(self.cursor); }
-            Action::HalfPageUp => { self.cursor.0 = self.cursor.0.saturating_sub(self.viewport.visible_rows / 2); self.viewport.ensure_visible(self.cursor); }
-            Action::PageDown => { self.cursor.0 += self.viewport.visible_rows; self.viewport.ensure_visible(self.cursor); }
-            Action::PageUp => { self.cursor.0 = self.cursor.0.saturating_sub(self.viewport.visible_rows); self.viewport.ensure_visible(self.cursor); }
+            Action::HalfPageDown => {
+                self.cursor.0 += self.viewport.visible_rows / 2;
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::HalfPageUp => {
+                self.cursor.0 = self.cursor.0.saturating_sub(self.viewport.visible_rows / 2);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::PageDown => {
+                self.cursor.0 += self.viewport.visible_rows;
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::PageUp => {
+                self.cursor.0 = self.cursor.0.saturating_sub(self.viewport.visible_rows);
+                self.viewport.ensure_visible(self.cursor);
+            }
             Action::Undo => {
                 if let Some(entry) = self.undo_stack.undo() {
                     self.apply_undo_entry(&entry, false);
@@ -217,7 +284,11 @@ impl App {
             Action::YankRow(row) => {
                 let mut cells = Vec::new();
                 for col in 0..self.sheet.col_count {
-                    let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                    let raw = self
+                        .sheet
+                        .get_cell((row, col))
+                        .map(|c| c.raw.clone())
+                        .unwrap_or_default();
                     cells.push(raw);
                 }
                 self.register = Some(Register::Row(cells));
@@ -228,7 +299,11 @@ impl App {
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
                     for col in start.1..=max_col {
-                        let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                        let raw = self
+                            .sheet
+                            .get_cell((row, col))
+                            .map(|c| c.raw.clone())
+                            .unwrap_or_default();
                         row_data.push(raw);
                     }
                     block.push(row_data);
@@ -241,7 +316,11 @@ impl App {
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
                     for col in start.1..=max_col {
-                        let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                        let raw = self
+                            .sheet
+                            .get_cell((row, col))
+                            .map(|c| c.raw.clone())
+                            .unwrap_or_default();
                         row_data.push(raw);
                         self.sheet.clear_cell((row, col));
                     }
@@ -253,7 +332,11 @@ impl App {
             Action::DeleteRow(row) => {
                 let mut cells = Vec::new();
                 for col in 0..self.sheet.col_count {
-                    let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                    let raw = self
+                        .sheet
+                        .get_cell((row, col))
+                        .map(|c| c.raw.clone())
+                        .unwrap_or_default();
                     cells.push(raw);
                     self.sheet.clear_cell((row, col));
                 }
@@ -265,10 +348,14 @@ impl App {
                 if let Some(reg) = &self.register.clone() {
                     match reg {
                         Register::Cell(raw) => {
-                            // Cell: p pastes at cursor, P also at cursor (no row offset)
                             let adjusted = crate::clipboard::adjust_formula(raw, 0, 0);
                             if adjusted.starts_with('=') {
-                                cell_core::formula::deps::set_formula(&mut self.sheet, &mut self.deps, pos, &adjusted);
+                                cell_core::formula::deps::set_formula(
+                                    &mut self.sheet,
+                                    &mut self.deps,
+                                    pos,
+                                    &adjusted,
+                                );
                             } else {
                                 self.sheet.set_cell(pos, &adjusted);
                             }
@@ -279,7 +366,11 @@ impl App {
                             let dest_row = if is_after { pos.0 + 1 } else { pos.0 };
                             for (col, raw) in cells.iter().enumerate() {
                                 if !raw.is_empty() {
-                                    let adjusted = crate::clipboard::adjust_formula(raw, dest_row as isize - pos.0 as isize, 0);
+                                    let adjusted = crate::clipboard::adjust_formula(
+                                        raw,
+                                        dest_row as isize - pos.0 as isize,
+                                        0,
+                                    );
                                     self.sheet.set_cell((dest_row, col), &adjusted);
                                 }
                             }
@@ -290,8 +381,13 @@ impl App {
                             for (r_off, row_data) in block.iter().enumerate() {
                                 for (c_off, raw) in row_data.iter().enumerate() {
                                     if !raw.is_empty() {
-                                        let adjusted = crate::clipboard::adjust_formula(raw, r_off as isize, c_off as isize);
-                                        self.sheet.set_cell((pos.0 + r_off, pos.1 + c_off), &adjusted);
+                                        let adjusted = crate::clipboard::adjust_formula(
+                                            raw,
+                                            r_off as isize,
+                                            c_off as isize,
+                                        );
+                                        self.sheet
+                                            .set_cell((pos.0 + r_off, pos.1 + c_off), &adjusted);
                                     }
                                 }
                             }
@@ -322,30 +418,34 @@ impl App {
                     }
                 }
             }
-            Action::ShowHelp(topic) => {
-                match topic {
-                    Some(ref tag) => {
-                        if self.help_registry.find(tag).is_some() {
-                            self.help_topic = topic;
-                            self.help_scroll = 0;
-                            self.mode = Mode::Help;
-                        } else {
-                            self.status_message = Some(format!("No help for '{}'", tag));
-                        }
-                    }
-                    None => {
-                        self.help_topic = None;
+            Action::ShowHelp(topic) => match topic {
+                Some(ref tag) => {
+                    if self.help_registry.find(tag).is_some() {
+                        self.help_topic = topic;
                         self.help_scroll = 0;
                         self.mode = Mode::Help;
+                    } else {
+                        self.status_message = Some(format!("No help for '{}'", tag));
                     }
                 }
-            }
+                None => {
+                    self.help_topic = None;
+                    self.help_scroll = 0;
+                    self.mode = Mode::Help;
+                }
+            },
             Action::Open(_) | Action::Resize => {}
         }
     }
 
     fn format_from_path(path: &Path) -> FileFormat {
-        match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str() {
+        match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase()
+            .as_str()
+        {
             "tsv" => FileFormat::Tsv,
             "cell" => FileFormat::Cell,
             _ => FileFormat::Csv,
@@ -354,21 +454,15 @@ impl App {
 
     fn do_save(&mut self, path: &PathBuf, format: FileFormat) {
         let result = match format {
-            FileFormat::Csv => {
-                std::fs::File::create(path)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                    .and_then(|f| cell_core::io::csv::write_csv(&self.sheet, f, b','))
-            }
-            FileFormat::Tsv => {
-                std::fs::File::create(path)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                    .and_then(|f| cell_core::io::csv::write_csv(&self.sheet, f, b'\t'))
-            }
-            FileFormat::Cell => {
-                std::fs::File::create(path)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                    .and_then(|f| cell_core::io::cell_format::write_cell_format(&self.sheet, f))
-            }
+            FileFormat::Csv => std::fs::File::create(path)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                .and_then(|f| cell_core::io::csv::write_csv(&self.sheet, f, b',')),
+            FileFormat::Tsv => std::fs::File::create(path)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                .and_then(|f| cell_core::io::csv::write_csv(&self.sheet, f, b'\t')),
+            FileFormat::Cell => std::fs::File::create(path)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                .and_then(|f| cell_core::io::cell_format::write_cell_format(&self.sheet, f)),
         };
 
         match result {
@@ -391,7 +485,9 @@ impl App {
         };
 
         let total_cells = self.sheet.row_count * self.sheet.col_count.max(1);
-        if total_cells == 0 { return; }
+        if total_cells == 0 {
+            return;
+        }
 
         let (start_row, start_col) = self.cursor;
         let cols = self.sheet.col_count.max(1);
@@ -419,7 +515,11 @@ impl App {
 
     fn apply_undo_entry(&mut self, entry: &UndoEntry, redo: bool) {
         match entry {
-            UndoEntry::CellEdit { pos, old_raw, new_raw } => {
+            UndoEntry::CellEdit {
+                pos,
+                old_raw,
+                new_raw,
+            } => {
                 let raw = if redo { new_raw } else { old_raw };
                 if raw.is_empty() {
                     self.sheet.clear_cell(*pos);

@@ -1,7 +1,7 @@
-use crate::model::{CellError, CellValue, CellPos, Sheet};
 use crate::formula::ast::*;
-use crate::formula::parser;
 use crate::formula::functions;
+use crate::formula::parser;
+use crate::model::{CellError, CellPos, CellValue, Sheet};
 
 fn expand_range(start: &CellRef, end: &CellRef) -> Vec<CellPos> {
     let mut positions = Vec::new();
@@ -47,9 +47,7 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
                 val
             }
         }
-        Expr::Range { .. } => {
-            CellValue::Error(CellError::Value)
-        }
+        Expr::Range { .. } => CellValue::Error(CellError::Value),
         Expr::UnaryNeg(inner) => {
             let val = eval_expr(inner, sheet);
             match cell_value_to_number(&val) {
@@ -61,8 +59,12 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
             let lval = eval_expr(left, sheet);
             let rval = eval_expr(right, sheet);
 
-            if let CellValue::Error(e) = &lval { return CellValue::Error(e.clone()); }
-            if let CellValue::Error(e) = &rval { return CellValue::Error(e.clone()); }
+            if let CellValue::Error(e) = &lval {
+                return CellValue::Error(e.clone());
+            }
+            if let CellValue::Error(e) = &rval {
+                return CellValue::Error(e.clone());
+            }
 
             match op {
                 Op::Add | Op::Sub | Op::Mul | Op::Div => {
@@ -256,7 +258,10 @@ mod tests {
         sheet.set_cell((0, 0), "1");
         sheet.set_cell((1, 0), "2");
         sheet.set_cell((2, 0), "3");
-        assert_eq!(eval_with_sheet("SUM(A1:A3)", &sheet), CellValue::Number(6.0));
+        assert_eq!(
+            eval_with_sheet("SUM(A1:A3)", &sheet),
+            CellValue::Number(6.0)
+        );
     }
 
     #[test]
@@ -264,7 +269,10 @@ mod tests {
         let mut sheet = Sheet::new();
         sheet.set_cell((0, 0), "2");
         sheet.set_cell((1, 0), "4");
-        assert_eq!(eval_with_sheet("AVERAGE(A1:A2)", &sheet), CellValue::Number(3.0));
+        assert_eq!(
+            eval_with_sheet("AVERAGE(A1:A2)", &sheet),
+            CellValue::Number(3.0)
+        );
     }
 
     #[test]
@@ -273,7 +281,10 @@ mod tests {
         sheet.set_cell((0, 0), "1");
         sheet.set_cell((1, 0), "hello");
         sheet.set_cell((2, 0), "3");
-        assert_eq!(eval_with_sheet("COUNT(A1:A3)", &sheet), CellValue::Number(2.0));
+        assert_eq!(
+            eval_with_sheet("COUNT(A1:A3)", &sheet),
+            CellValue::Number(2.0)
+        );
     }
 
     #[test]
@@ -282,7 +293,10 @@ mod tests {
         sheet.set_cell((0, 0), "5");
         sheet.set_cell((1, 0), "2");
         sheet.set_cell((2, 0), "8");
-        assert_eq!(eval_with_sheet("MIN(A1:A3)", &sheet), CellValue::Number(2.0));
+        assert_eq!(
+            eval_with_sheet("MIN(A1:A3)", &sheet),
+            CellValue::Number(2.0)
+        );
     }
 
     #[test]
@@ -291,7 +305,10 @@ mod tests {
         sheet.set_cell((0, 0), "5");
         sheet.set_cell((1, 0), "2");
         sheet.set_cell((2, 0), "8");
-        assert_eq!(eval_with_sheet("MAX(A1:A3)", &sheet), CellValue::Number(8.0));
+        assert_eq!(
+            eval_with_sheet("MAX(A1:A3)", &sheet),
+            CellValue::Number(8.0)
+        );
     }
 
     #[test]
@@ -314,6 +331,9 @@ mod tests {
         let mut sheet = Sheet::new();
         sheet.set_cell((0, 0), "=1/0");
         sheet.cells.get_mut(&(0, 0)).unwrap().value = CellValue::Error(CellError::DivZero);
-        assert_eq!(eval_with_sheet("A1+1", &sheet), CellValue::Error(CellError::DivZero));
+        assert_eq!(
+            eval_with_sheet("A1+1", &sheet),
+            CellValue::Error(CellError::DivZero)
+        );
     }
 }

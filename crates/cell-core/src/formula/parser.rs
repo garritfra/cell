@@ -1,6 +1,6 @@
-use crate::model::CellError;
-use crate::formula::token::{Token, tokenize};
 use crate::formula::ast::*;
+use crate::formula::token::{tokenize, Token};
+use crate::model::CellError;
 
 struct Parser {
     tokens: Vec<Token>,
@@ -46,7 +46,11 @@ impl Parser {
         }) {
             self.advance();
             let right = self.addition()?;
-            left = Expr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -61,7 +65,11 @@ impl Parser {
             };
             self.advance();
             let right = self.multiplication()?;
-            left = Expr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -76,7 +84,11 @@ impl Parser {
             };
             self.advance();
             let right = self.unary()?;
-            left = Expr::BinaryOp { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -96,17 +108,31 @@ impl Parser {
             Token::Number(n) => Ok(Expr::Number(n)),
             Token::StringLit(s) => Ok(Expr::Text(s)),
             Token::Bool(b) => Ok(Expr::Bool(b)),
-            Token::CellRef { col, row, abs_col, abs_row } => {
-                let cell_ref = CellRef::from_display(&col, &row, abs_col, abs_row)
-                    .ok_or(CellError::Ref)?;
+            Token::CellRef {
+                col,
+                row,
+                abs_col,
+                abs_row,
+            } => {
+                let cell_ref =
+                    CellRef::from_display(&col, &row, abs_col, abs_row).ok_or(CellError::Ref)?;
 
                 if let Some(Token::Colon) = self.peek() {
                     self.advance();
                     let end_tok = self.advance().ok_or(CellError::Parse)?.clone();
-                    if let Token::CellRef { col: col2, row: row2, abs_col: ac2, abs_row: ar2 } = end_tok {
-                        let end_ref = CellRef::from_display(&col2, &row2, ac2, ar2)
-                            .ok_or(CellError::Ref)?;
-                        Ok(Expr::Range { start: cell_ref, end: end_ref })
+                    if let Token::CellRef {
+                        col: col2,
+                        row: row2,
+                        abs_col: ac2,
+                        abs_row: ar2,
+                    } = end_tok
+                    {
+                        let end_ref =
+                            CellRef::from_display(&col2, &row2, ac2, ar2).ok_or(CellError::Ref)?;
+                        Ok(Expr::Range {
+                            start: cell_ref,
+                            end: end_ref,
+                        })
                     } else {
                         Err(CellError::Parse)
                     }
@@ -166,101 +192,171 @@ mod tests {
     #[test]
     fn parse_cell_ref() {
         let expr = parse("A1").unwrap();
-        assert_eq!(expr, Expr::CellRef(CellRef { col: 0, row: 0, abs_col: false, abs_row: false }));
+        assert_eq!(
+            expr,
+            Expr::CellRef(CellRef {
+                col: 0,
+                row: 0,
+                abs_col: false,
+                abs_row: false
+            })
+        );
     }
 
     #[test]
     fn parse_addition() {
         let expr = parse("1+2").unwrap();
-        assert_eq!(expr, Expr::BinaryOp {
-            op: Op::Add,
-            left: Box::new(Expr::Number(1.0)),
-            right: Box::new(Expr::Number(2.0)),
-        });
+        assert_eq!(
+            expr,
+            Expr::BinaryOp {
+                op: Op::Add,
+                left: Box::new(Expr::Number(1.0)),
+                right: Box::new(Expr::Number(2.0)),
+            }
+        );
     }
 
     #[test]
     fn parse_precedence_mul_before_add() {
         let expr = parse("1+2*3").unwrap();
-        assert_eq!(expr, Expr::BinaryOp {
-            op: Op::Add,
-            left: Box::new(Expr::Number(1.0)),
-            right: Box::new(Expr::BinaryOp {
-                op: Op::Mul,
-                left: Box::new(Expr::Number(2.0)),
-                right: Box::new(Expr::Number(3.0)),
-            }),
-        });
+        assert_eq!(
+            expr,
+            Expr::BinaryOp {
+                op: Op::Add,
+                left: Box::new(Expr::Number(1.0)),
+                right: Box::new(Expr::BinaryOp {
+                    op: Op::Mul,
+                    left: Box::new(Expr::Number(2.0)),
+                    right: Box::new(Expr::Number(3.0)),
+                }),
+            }
+        );
     }
 
     #[test]
     fn parse_parentheses() {
         let expr = parse("(1+2)*3").unwrap();
-        assert_eq!(expr, Expr::BinaryOp {
-            op: Op::Mul,
-            left: Box::new(Expr::BinaryOp {
-                op: Op::Add,
-                left: Box::new(Expr::Number(1.0)),
-                right: Box::new(Expr::Number(2.0)),
-            }),
-            right: Box::new(Expr::Number(3.0)),
-        });
+        assert_eq!(
+            expr,
+            Expr::BinaryOp {
+                op: Op::Mul,
+                left: Box::new(Expr::BinaryOp {
+                    op: Op::Add,
+                    left: Box::new(Expr::Number(1.0)),
+                    right: Box::new(Expr::Number(2.0)),
+                }),
+                right: Box::new(Expr::Number(3.0)),
+            }
+        );
     }
 
     #[test]
     fn parse_function_call() {
         let expr = parse("SUM(A1:A3)").unwrap();
-        assert_eq!(expr, Expr::FnCall {
-            name: "SUM".into(),
-            args: vec![Expr::Range {
-                start: CellRef { col: 0, row: 0, abs_col: false, abs_row: false },
-                end: CellRef { col: 0, row: 2, abs_col: false, abs_row: false },
-            }],
-        });
+        assert_eq!(
+            expr,
+            Expr::FnCall {
+                name: "SUM".into(),
+                args: vec![Expr::Range {
+                    start: CellRef {
+                        col: 0,
+                        row: 0,
+                        abs_col: false,
+                        abs_row: false
+                    },
+                    end: CellRef {
+                        col: 0,
+                        row: 2,
+                        abs_col: false,
+                        abs_row: false
+                    },
+                }],
+            }
+        );
     }
 
     #[test]
     fn parse_function_multiple_args() {
         let expr = parse("IF(A1>0,A1,0)").unwrap();
-        assert_eq!(expr, Expr::FnCall {
-            name: "IF".into(),
-            args: vec![
-                Expr::BinaryOp {
-                    op: Op::Gt,
-                    left: Box::new(Expr::CellRef(CellRef { col: 0, row: 0, abs_col: false, abs_row: false })),
-                    right: Box::new(Expr::Number(0.0)),
-                },
-                Expr::CellRef(CellRef { col: 0, row: 0, abs_col: false, abs_row: false }),
-                Expr::Number(0.0),
-            ],
-        });
+        assert_eq!(
+            expr,
+            Expr::FnCall {
+                name: "IF".into(),
+                args: vec![
+                    Expr::BinaryOp {
+                        op: Op::Gt,
+                        left: Box::new(Expr::CellRef(CellRef {
+                            col: 0,
+                            row: 0,
+                            abs_col: false,
+                            abs_row: false
+                        })),
+                        right: Box::new(Expr::Number(0.0)),
+                    },
+                    Expr::CellRef(CellRef {
+                        col: 0,
+                        row: 0,
+                        abs_col: false,
+                        abs_row: false
+                    }),
+                    Expr::Number(0.0),
+                ],
+            }
+        );
     }
 
     #[test]
     fn parse_unary_negation() {
         let expr = parse("-A1").unwrap();
-        assert_eq!(expr, Expr::UnaryNeg(Box::new(
-            Expr::CellRef(CellRef { col: 0, row: 0, abs_col: false, abs_row: false })
-        )));
+        assert_eq!(
+            expr,
+            Expr::UnaryNeg(Box::new(Expr::CellRef(CellRef {
+                col: 0,
+                row: 0,
+                abs_col: false,
+                abs_row: false
+            })))
+        );
     }
 
     #[test]
     fn parse_comparison() {
         let expr = parse("A1>=10").unwrap();
-        assert_eq!(expr, Expr::BinaryOp {
-            op: Op::Gte,
-            left: Box::new(Expr::CellRef(CellRef { col: 0, row: 0, abs_col: false, abs_row: false })),
-            right: Box::new(Expr::Number(10.0)),
-        });
+        assert_eq!(
+            expr,
+            Expr::BinaryOp {
+                op: Op::Gte,
+                left: Box::new(Expr::CellRef(CellRef {
+                    col: 0,
+                    row: 0,
+                    abs_col: false,
+                    abs_row: false
+                })),
+                right: Box::new(Expr::Number(10.0)),
+            }
+        );
     }
 
     #[test]
     fn parse_range() {
         let expr = parse("A1:B3").unwrap();
-        assert_eq!(expr, Expr::Range {
-            start: CellRef { col: 0, row: 0, abs_col: false, abs_row: false },
-            end: CellRef { col: 1, row: 2, abs_col: false, abs_row: false },
-        });
+        assert_eq!(
+            expr,
+            Expr::Range {
+                start: CellRef {
+                    col: 0,
+                    row: 0,
+                    abs_col: false,
+                    abs_row: false
+                },
+                end: CellRef {
+                    col: 1,
+                    row: 2,
+                    abs_col: false,
+                    abs_row: false
+                },
+            }
+        );
     }
 
     #[test]
@@ -272,16 +368,29 @@ mod tests {
     #[test]
     fn parse_complex_formula() {
         let expr = parse("SUM(A1:A3)+1").unwrap();
-        assert_eq!(expr, Expr::BinaryOp {
-            op: Op::Add,
-            left: Box::new(Expr::FnCall {
-                name: "SUM".into(),
-                args: vec![Expr::Range {
-                    start: CellRef { col: 0, row: 0, abs_col: false, abs_row: false },
-                    end: CellRef { col: 0, row: 2, abs_col: false, abs_row: false },
-                }],
-            }),
-            right: Box::new(Expr::Number(1.0)),
-        });
+        assert_eq!(
+            expr,
+            Expr::BinaryOp {
+                op: Op::Add,
+                left: Box::new(Expr::FnCall {
+                    name: "SUM".into(),
+                    args: vec![Expr::Range {
+                        start: CellRef {
+                            col: 0,
+                            row: 0,
+                            abs_col: false,
+                            abs_row: false
+                        },
+                        end: CellRef {
+                            col: 0,
+                            row: 2,
+                            abs_col: false,
+                            abs_row: false
+                        },
+                    }],
+                }),
+                right: Box::new(Expr::Number(1.0)),
+            }
+        );
     }
 }

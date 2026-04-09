@@ -1,5 +1,5 @@
-use std::io::{Read, Write, BufRead, BufReader};
-use crate::model::{Sheet, CellValue, col_index_to_label, col_label_to_index};
+use crate::model::{col_index_to_label, col_label_to_index, CellValue, Sheet};
+use std::io::{BufRead, BufReader, Read, Write};
 
 fn parse_address(addr: &str) -> Option<(usize, usize)> {
     let mut col_end = 0;
@@ -24,7 +24,10 @@ fn format_address(row: usize, col: usize) -> String {
     format!("{}{}", col_index_to_label(col), row)
 }
 
-pub fn write_cell_format<W: Write>(sheet: &Sheet, mut writer: W) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_cell_format<W: Write>(
+    sheet: &Sheet,
+    mut writer: W,
+) -> Result<(), Box<dyn std::error::Error>> {
     writeln!(writer, "# cell v1")?;
     writeln!(writer)?;
     writeln!(writer, "size {} {}", sheet.row_count, sheet.col_count)?;
@@ -55,7 +58,12 @@ pub fn write_cell_format<W: Write>(sheet: &Sheet, mut writer: W) -> Result<(), B
                     writeln!(writer, "label {} = \"{}\"", addr, s)?;
                 }
                 CellValue::Bool(b) => {
-                    writeln!(writer, "let {} = {}", addr, if *b { "TRUE" } else { "FALSE" })?;
+                    writeln!(
+                        writer,
+                        "let {} = {}",
+                        addr,
+                        if *b { "TRUE" } else { "FALSE" }
+                    )?;
                 }
                 CellValue::Empty => {}
                 CellValue::Error(_) => {
@@ -107,7 +115,7 @@ pub fn read_cell_format<R: Read>(reader: R) -> Result<Sheet, Box<dyn std::error:
                 if let Some(pos) = parse_address(addr_str.trim()) {
                     let s = value_str.trim();
                     let s = if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-                        &s[1..s.len()-1]
+                        &s[1..s.len() - 1]
                     } else {
                         s
                     };
@@ -153,8 +161,14 @@ mod tests {
         let sheet2 = read_cell_format(buf.as_slice()).unwrap();
         assert_eq!(sheet2.row_count, 2);
         assert_eq!(sheet2.col_count, 2);
-        assert_eq!(sheet2.get_cell((0, 0)).unwrap().value, CellValue::Number(42.0));
-        assert_eq!(sheet2.get_cell((0, 1)).unwrap().value, CellValue::Text("hello".into()));
+        assert_eq!(
+            sheet2.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(42.0)
+        );
+        assert_eq!(
+            sheet2.get_cell((0, 1)).unwrap().value,
+            CellValue::Text("hello".into())
+        );
         assert_eq!(sheet2.get_cell((1, 0)).unwrap().raw, "=A1+1");
         assert_eq!(sheet2.col_widths, vec![12, 8]);
     }
@@ -163,14 +177,20 @@ mod tests {
     fn read_comments_and_blanks() {
         let data = "# comment\n\nsize 1 1\nlet A0 = 5\n";
         let sheet = read_cell_format(data.as_bytes()).unwrap();
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Number(5.0));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(5.0)
+        );
     }
 
     #[test]
     fn read_label_with_spaces() {
         let data = "size 1 1\nlabel A0 = \"hello world\"\n";
         let sheet = read_cell_format(data.as_bytes()).unwrap();
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Text("hello world".into()));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("hello world".into())
+        );
     }
 
     #[test]
@@ -184,8 +204,11 @@ mod tests {
 
     #[test]
     fn read_float_value() {
-        let data = "size 1 1\nlet A0 = 3.14\n";
+        let data = "size 1 1\nlet A0 = 3.15\n";
         let sheet = read_cell_format(data.as_bytes()).unwrap();
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Number(3.14));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(3.15)
+        );
     }
 }

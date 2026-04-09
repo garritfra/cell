@@ -1,10 +1,10 @@
+use cell_core::help::HelpRegistry;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
     widgets::Widget,
 };
-use cell_core::help::HelpRegistry;
 
 pub struct HelpView<'a> {
     pub registry: &'a HelpRegistry,

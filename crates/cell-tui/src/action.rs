@@ -1,9 +1,12 @@
-use std::path::PathBuf;
 use cell_core::model::CellPos;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Direction {
-    Up, Down, Left, Right,
+    Up,
+    Down,
+    Left,
+    Right,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,12 +24,21 @@ pub enum Action {
     MoveCursorTo(CellPos),
     EditCell(CellPos, String),
     ClearCell(CellPos),
-    ClearRange { start: CellPos, end: CellPos },
+    ClearRange {
+        start: CellPos,
+        end: CellPos,
+    },
     ChangeCell(CellPos),
-    ChangeRange { start: CellPos, end: CellPos },
+    ChangeRange {
+        start: CellPos,
+        end: CellPos,
+    },
     #[allow(dead_code)]
     YankCell(CellPos),
-    YankRange { start: CellPos, end: CellPos },
+    YankRange {
+        start: CellPos,
+        end: CellPos,
+    },
     Paste(CellPos),
     PasteBefore(CellPos),
     Undo,
@@ -35,10 +47,18 @@ pub enum Action {
     Save(Option<PathBuf>),
     ForceSave(Option<PathBuf>),
     Open(PathBuf),
-    Quit { force: bool },
-    Sort { col: usize, ascending: bool },
+    Quit {
+        force: bool,
+    },
+    Sort {
+        col: usize,
+        ascending: bool,
+    },
     #[allow(dead_code)]
-    Search { pattern: String, direction: SearchDirection },
+    Search {
+        pattern: String,
+        direction: SearchDirection,
+    },
     SearchNext,
     SearchPrev,
     #[allow(dead_code)]

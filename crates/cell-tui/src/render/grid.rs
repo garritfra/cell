@@ -1,11 +1,11 @@
+use crate::viewport::Viewport;
+use cell_core::model::{col_index_to_label, CellPos, CellValue, Sheet};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Style},
     widgets::Widget,
 };
-use cell_core::model::{Sheet, CellPos, CellValue, col_index_to_label};
-use crate::viewport::Viewport;
 
 pub struct Grid<'a> {
     pub sheet: &'a Sheet,
@@ -19,13 +19,19 @@ const DEFAULT_COL_WIDTH: u16 = 10;
 
 impl<'a> Grid<'a> {
     fn col_width(&self, col: usize) -> u16 {
-        self.sheet.col_widths.get(col).copied().unwrap_or(DEFAULT_COL_WIDTH)
+        self.sheet
+            .col_widths
+            .get(col)
+            .copied()
+            .unwrap_or(DEFAULT_COL_WIDTH)
     }
 }
 
 impl<'a> Widget for Grid<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        if area.height < 2 || area.width < ROW_NUM_WIDTH + 2 { return; }
+        if area.height < 2 || area.width < ROW_NUM_WIDTH + 2 {
+            return;
+        }
 
         let header_style = Style::default().fg(Color::Black).bg(Color::DarkGray);
         let cursor_style = Style::default().fg(Color::Black).bg(Color::Yellow);
@@ -36,7 +42,9 @@ impl<'a> Widget for Grid<'a> {
         let mut x = area.x + ROW_NUM_WIDTH + 1;
         let mut visible_cols = Vec::new();
         for col in self.viewport.col_offset.. {
-            if x >= area.x + area.width { break; }
+            if x >= area.x + area.width {
+                break;
+            }
             let w = self.col_width(col);
             let label = col_index_to_label(col);
             let display = format!("{:^width$}", label, width = w as usize);
@@ -50,7 +58,9 @@ impl<'a> Widget for Grid<'a> {
         for row_offset in 0..area.height.saturating_sub(1) {
             let row = self.viewport.row_offset + row_offset as usize;
             let y = area.y + 1 + row_offset;
-            if y >= area.y + area.height { break; }
+            if y >= area.y + area.height {
+                break;
+            }
 
             let row_num = format!("{:>width$}", row + 1, width = ROW_NUM_WIDTH as usize);
             buf.set_string(area.x, y, &row_num, header_style);
@@ -61,9 +71,13 @@ impl<'a> Widget for Grid<'a> {
                 let is_selected = self.selection.is_some_and(|(start, end)| {
                     row >= start.0 && row <= end.0 && col >= start.1 && col <= end.1
                 });
-                let style = if is_cursor { cursor_style }
-                    else if is_selected { selection_style }
-                    else { normal_style };
+                let style = if is_cursor {
+                    cursor_style
+                } else if is_selected {
+                    selection_style
+                } else {
+                    normal_style
+                };
 
                 let display_val = match self.sheet.get_cell(pos) {
                     Some(cell) => cell.value.to_string(),

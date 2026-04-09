@@ -100,11 +100,14 @@ impl Sheet {
             CellValue::Text(raw.to_string())
         };
 
-        self.cells.insert(pos, Cell {
-            raw: raw.to_string(),
-            value,
-            dirty: raw.starts_with('='),
-        });
+        self.cells.insert(
+            pos,
+            Cell {
+                raw: raw.to_string(),
+                value,
+                dirty: raw.starts_with('='),
+            },
+        );
 
         self.row_count = self.row_count.max(pos.0 + 1);
         self.col_count = self.col_count.max(pos.1 + 1);
@@ -115,7 +118,9 @@ impl Sheet {
     }
 
     pub fn sort_by_column(&mut self, col: usize, ascending: bool) {
-        if self.row_count == 0 { return; }
+        if self.row_count == 0 {
+            return;
+        }
 
         let mut row_indices: Vec<usize> = (0..self.row_count).collect();
 
@@ -133,7 +138,11 @@ impl Sheet {
                 (None, None) => std::cmp::Ordering::Equal,
             };
 
-            if ascending { ord } else { ord.reverse() }
+            if ascending {
+                ord
+            } else {
+                ord.reverse()
+            }
         });
 
         let mut new_cells = std::collections::HashMap::new();
@@ -181,7 +190,7 @@ mod tests {
     #[test]
     fn cell_value_display_number() {
         assert_eq!(CellValue::Number(42.0).to_string(), "42");
-        assert_eq!(CellValue::Number(3.14).to_string(), "3.14");
+        assert_eq!(CellValue::Number(3.15).to_string(), "3.15");
         assert_eq!(CellValue::Number(0.0).to_string(), "0");
     }
 
@@ -240,14 +249,20 @@ mod tests {
     fn sheet_set_cell_parses_number() {
         let mut sheet = Sheet::new();
         sheet.set_cell((0, 0), "42");
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Number(42.0));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(42.0)
+        );
     }
 
     #[test]
     fn sheet_set_cell_parses_float() {
         let mut sheet = Sheet::new();
-        sheet.set_cell((0, 0), "3.14");
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Number(3.14));
+        sheet.set_cell((0, 0), "3.15");
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(3.15)
+        );
     }
 
     #[test]
@@ -317,8 +332,17 @@ mod tests {
         sheet.set_cell((1, 0), "5");
         sheet.set_cell((2, 0), "100");
         sheet.sort_by_column(0, true);
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Number(5.0));
-        assert_eq!(sheet.get_cell((1, 0)).unwrap().value, CellValue::Number(30.0));
-        assert_eq!(sheet.get_cell((2, 0)).unwrap().value, CellValue::Number(100.0));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(5.0)
+        );
+        assert_eq!(
+            sheet.get_cell((1, 0)).unwrap().value,
+            CellValue::Number(30.0)
+        );
+        assert_eq!(
+            sheet.get_cell((2, 0)).unwrap().value,
+            CellValue::Number(100.0)
+        );
     }
 }
