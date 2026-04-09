@@ -2,9 +2,9 @@ use crate::action::{Action, Direction, Mode};
 use crate::clipboard::Register;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
-use cell_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
-use cell_core::help::HelpRegistry;
-use cell_core::model::{CellPos, Sheet};
+use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
+use cell_sheet_core::help::HelpRegistry;
+use cell_sheet_core::model::{CellPos, Sheet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -272,7 +272,7 @@ impl App {
                 self.dirty = true;
                 self.status_message = Some(format!(
                     "Sorted by column {} {}",
-                    cell_core::model::col_index_to_label(col),
+                    cell_sheet_core::model::col_index_to_label(col),
                     if ascending { "ascending" } else { "descending" }
                 ));
             }
@@ -350,7 +350,7 @@ impl App {
                         Register::Cell(raw) => {
                             let adjusted = crate::clipboard::adjust_formula(raw, 0, 0);
                             if adjusted.starts_with('=') {
-                                cell_core::formula::deps::set_formula(
+                                cell_sheet_core::formula::deps::set_formula(
                                     &mut self.sheet,
                                     &mut self.deps,
                                     pos,
@@ -456,13 +456,13 @@ impl App {
         let result = match format {
             FileFormat::Csv => std::fs::File::create(path)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                .and_then(|f| cell_core::io::csv::write_csv(&self.sheet, f, b',')),
+                .and_then(|f| cell_sheet_core::io::csv::write_csv(&self.sheet, f, b',')),
             FileFormat::Tsv => std::fs::File::create(path)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                .and_then(|f| cell_core::io::csv::write_csv(&self.sheet, f, b'\t')),
+                .and_then(|f| cell_sheet_core::io::csv::write_csv(&self.sheet, f, b'\t')),
             FileFormat::Cell => std::fs::File::create(path)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                .and_then(|f| cell_core::io::cell_format::write_cell_format(&self.sheet, f)),
+                .and_then(|f| cell_sheet_core::io::cell_format::write_cell_format(&self.sheet, f)),
         };
 
         match result {

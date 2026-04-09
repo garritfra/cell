@@ -1,4 +1,4 @@
-use cell_core::help::HelpRegistry;
+use cell_sheet_core::help::HelpRegistry;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

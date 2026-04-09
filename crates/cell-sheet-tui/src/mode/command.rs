@@ -42,7 +42,7 @@ fn parse_sort_command(args: &str) -> Action {
     if parts.is_empty() {
         return Action::Noop;
     }
-    let col = cell_core::model::col_label_to_index(parts[0]).unwrap_or(0);
+    let col = cell_sheet_core::model::col_label_to_index(parts[0]).unwrap_or(0);
     let ascending = parts.get(1).map(|&s| s != "desc").unwrap_or(true);
     Action::Sort { col, ascending }
 }

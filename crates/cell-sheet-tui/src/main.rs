@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    use cell_core::formula::deps::{recalculate, set_formula};
+    use cell_sheet_core::formula::deps::{recalculate, set_formula};
 
     let ext = path
         .extension()
@@ -58,22 +58,22 @@ fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::e
     match ext.as_str() {
         "csv" => {
             let file = std::fs::File::open(path)?;
-            app.sheet = cell_core::io::csv::read_csv(file, b',')?;
+            app.sheet = cell_sheet_core::io::csv::read_csv(file, b',')?;
             app.file_format = FileFormat::Csv;
         }
         "tsv" => {
             let file = std::fs::File::open(path)?;
-            app.sheet = cell_core::io::csv::read_csv(file, b'\t')?;
+            app.sheet = cell_sheet_core::io::csv::read_csv(file, b'\t')?;
             app.file_format = FileFormat::Tsv;
         }
         "cell" => {
             let file = std::fs::File::open(path)?;
-            app.sheet = cell_core::io::cell_format::read_cell_format(file)?;
+            app.sheet = cell_sheet_core::io::cell_format::read_cell_format(file)?;
             app.file_format = FileFormat::Cell;
         }
         _ => {
             let file = std::fs::File::open(path)?;
-            app.sheet = cell_core::io::csv::read_csv(file, b',')?;
+            app.sheet = cell_sheet_core::io::csv::read_csv(file, b',')?;
             app.file_format = FileFormat::Csv;
         }
     }

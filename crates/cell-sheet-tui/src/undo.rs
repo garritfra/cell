@@ -1,4 +1,4 @@
-use cell_core::model::CellPos;
+use cell_sheet_core::model::CellPos;
 
 #[derive(Debug, Clone)]
 pub enum UndoEntry {

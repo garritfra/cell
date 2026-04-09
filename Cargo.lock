@@ -152,7 +152,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cell-core"
+name = "cell-sheet-core"
 version = "0.1.0"
 dependencies = [
  "csv",
@@ -160,10 +160,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cell-tui"
+name = "cell-sheet-tui"
 version = "0.1.0"
 dependencies = [
- "cell-core",
+ "cell-sheet-core",
  "clap",
  "crossterm",
  "ratatui",

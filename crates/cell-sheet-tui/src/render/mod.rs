@@ -6,7 +6,7 @@ pub mod status_bar;
 
 use crate::action::Mode;
 use crate::app::App;
-use cell_core::model::CellPos;
+use cell_sheet_core::model::CellPos;
 use command_line::CommandLine;
 use formula_bar::FormulaBar;
 use grid::Grid;

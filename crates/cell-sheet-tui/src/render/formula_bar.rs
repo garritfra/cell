@@ -1,4 +1,4 @@
-use cell_core::model::{col_index_to_label, CellPos};
+use cell_sheet_core::model::{col_index_to_label, CellPos};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

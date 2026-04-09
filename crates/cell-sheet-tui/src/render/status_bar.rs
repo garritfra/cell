@@ -1,5 +1,5 @@
 use crate::action::Mode;
-use cell_core::model::CellPos;
+use cell_sheet_core::model::CellPos;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -82,7 +82,7 @@ impl<'a> Widget for StatusBar<'a> {
             "{} rows x {} cols │ {}{} ",
             self.row_count,
             self.col_count,
-            cell_core::model::col_index_to_label(self.cursor.1),
+            cell_sheet_core::model::col_index_to_label(self.cursor.1),
             self.cursor.0 + 1
         );
         let right_x = area.x + area.width.saturating_sub(right.len() as u16);

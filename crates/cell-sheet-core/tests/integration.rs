@@ -1,7 +1,7 @@
-use cell_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
-use cell_core::io::cell_format::{read_cell_format, write_cell_format};
-use cell_core::io::csv::{read_csv, write_csv};
-use cell_core::model::{col_index_to_label, col_label_to_index, CellValue, Sheet};
+use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
+use cell_sheet_core::io::cell_format::{read_cell_format, write_cell_format};
+use cell_sheet_core::io::csv::{read_csv, write_csv};
+use cell_sheet_core::model::{col_index_to_label, col_label_to_index, CellValue, Sheet};
 
 #[test]
 fn csv_roundtrip() {
