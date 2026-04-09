@@ -110,8 +110,9 @@ fn run_loop(
         app.viewport.visible_rows = grid_height;
 
         let selection = visual_state.as_ref().map(|vs| vs.selection(app.cursor));
+        let ic = insert_cursor;
         terminal.draw(|frame| {
-            render::render(frame, app, selection);
+            render::render(frame, app, selection, ic);
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
