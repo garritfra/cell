@@ -89,6 +89,7 @@ fn run_loop(
     let mut insert_cursor: usize = 0;
     let mut search_mode = false;
     let mut wq_pending = false;
+    let mut help_pending_g = false;
 
     loop {
         let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
@@ -155,9 +156,46 @@ fn run_loop(
                         }
                     }
                     Mode::Help => {
-                        match key.code {
-                            KeyCode::Esc | KeyCode::Char('q') => Action::ChangeMode(Mode::Normal),
-                            _ => Action::Noop,
+                        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                            match key.code {
+                                KeyCode::Char('d') => {
+                                    app.help_scroll += grid_height / 2;
+                                    Action::Noop
+                                }
+                                KeyCode::Char('u') => {
+                                    app.help_scroll = app.help_scroll.saturating_sub(grid_height / 2);
+                                    Action::Noop
+                                }
+                                _ => Action::Noop,
+                            }
+                        } else if help_pending_g {
+                            help_pending_g = false;
+                            if key.code == KeyCode::Char('g') {
+                                app.help_scroll = 0;
+                            }
+                            Action::Noop
+                        } else {
+                            match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => Action::ChangeMode(Mode::Normal),
+                                KeyCode::Char('j') | KeyCode::Down => {
+                                    app.help_scroll += 1;
+                                    Action::Noop
+                                }
+                                KeyCode::Char('k') | KeyCode::Up => {
+                                    app.help_scroll = app.help_scroll.saturating_sub(1);
+                                    Action::Noop
+                                }
+                                KeyCode::Char('g') => {
+                                    help_pending_g = true;
+                                    Action::Noop
+                                }
+                                KeyCode::Char('G') => {
+                                    app.help_scroll = usize::MAX;
+                                    Action::Noop
+                                }
+                                KeyCode::Char(':') => Action::ChangeMode(Mode::Command),
+                                _ => Action::Noop,
+                            }
                         }
                     }
                     Mode::Command => {
