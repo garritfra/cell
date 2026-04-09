@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
+readme.workspace = true
 description = "Core spreadsheet engine with formulas, dependency tracking, and file I/O"
 
 [dependencies]

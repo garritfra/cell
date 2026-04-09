@@ -9,6 +9,7 @@ cell-sheet-core = { path = "crates/cell-sheet-core", version = "0.1.3" }
 version = "0.1.3"
 edition = "2021"
 license = "MIT"
+readme = "../../README.md"
 repository = "https://github.com/garritfra/cell"
 homepage = "https://github.com/garritfra/cell"
 authors = ["Garrit Franke"]
