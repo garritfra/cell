@@ -1,6 +1,6 @@
 pub mod entries;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpCategory {
     Normal,
     Insert,
