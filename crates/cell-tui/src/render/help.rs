@@ -15,12 +15,13 @@ pub struct HelpView<'a> {
 impl<'a> HelpView<'a> {
     /// Render the table of contents into lines.
     fn render_toc(&self) -> Vec<String> {
-        let mut lines = Vec::new();
-        lines.push(String::new());
-        lines.push("Cell — Terminal Spreadsheet Editor".to_string());
-        lines.push(String::new());
-        lines.push("Use :help <topic> for details on any entry below.".to_string());
-        lines.push(String::new());
+        let mut lines = vec![
+            String::new(),
+            "Cell — Terminal Spreadsheet Editor".to_string(),
+            String::new(),
+            "Use :help <topic> for details on any entry below.".to_string(),
+            String::new(),
+        ];
 
         for category in self.registry.categories() {
             lines.push(String::new());
@@ -46,7 +47,7 @@ impl<'a> HelpView<'a> {
             lines.push(String::new());
 
             // Title: all tags for this entry
-            let all_tags: Vec<&str> = entry.tags.iter().copied().collect();
+            let all_tags: Vec<&str> = entry.tags.to_vec();
             lines.push(all_tags.join(", "));
             lines.push(String::new());
 

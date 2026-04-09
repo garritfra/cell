@@ -402,3 +402,44 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::action::Action;
+
+    #[test]
+    fn show_help_toc_sets_help_mode() {
+        let mut app = App::new();
+        app.process_action(Action::ShowHelp(None));
+        assert_eq!(app.mode, Mode::Help);
+        assert_eq!(app.help_topic, None);
+        assert_eq!(app.help_scroll, 0);
+    }
+
+    #[test]
+    fn show_help_valid_topic() {
+        let mut app = App::new();
+        app.process_action(Action::ShowHelp(Some("dd".into())));
+        assert_eq!(app.mode, Mode::Help);
+        assert_eq!(app.help_topic, Some("dd".into()));
+    }
+
+    #[test]
+    fn show_help_invalid_topic_stays_normal() {
+        let mut app = App::new();
+        app.mode = Mode::Normal;
+        app.process_action(Action::ShowHelp(Some("nonexistent".into())));
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.status_message, Some("No help for 'nonexistent'".into()));
+    }
+
+    #[test]
+    fn help_mode_back_to_normal() {
+        let mut app = App::new();
+        app.process_action(Action::ShowHelp(None));
+        assert_eq!(app.mode, Mode::Help);
+        app.process_action(Action::ChangeMode(Mode::Normal));
+        assert_eq!(app.mode, Mode::Normal);
+    }
+}

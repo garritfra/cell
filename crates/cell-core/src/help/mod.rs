@@ -33,6 +33,12 @@ pub struct HelpRegistry {
     entries: Vec<&'static HelpEntry>,
 }
 
+impl Default for HelpRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HelpRegistry {
     /// Build the default registry with all built-in help entries.
     pub fn new() -> Self {
