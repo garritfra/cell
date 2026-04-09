@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2
+
+### Changed
+
+- Renamed crates for crates.io publishing: `cell-sheet-core` (engine) and `cell-sheet-tui` (binary)
+- Install via `cargo install cell-sheet-tui`
+
+### Added
+
+- Trusted publishing to crates.io via GitHub Actions on `v*` tag push
+- Pre-built binaries attached to GitHub Releases (Linux x86_64/aarch64, macOS x86_64/aarch64, Windows x86_64)
+
 ## 0.1.0 — Initial Release
 
 ### Spreadsheet Core
