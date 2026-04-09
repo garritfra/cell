@@ -82,7 +82,7 @@ fn run_loop(
     use mode::normal::NormalState;
     use mode::insert::{handle_insert_key, handle_insert_char, InsertAction};
     use mode::command::{handle_command_key, parse_command, CommandAction};
-    use mode::visual::VisualState;
+    use mode::visual::{VisualState, VisualKind};
     use mode::help::HelpState;
 
     let mut normal_state = NormalState::new();
@@ -96,8 +96,9 @@ fn run_loop(
         let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
         app.viewport.visible_rows = grid_height;
 
+        let selection = visual_state.as_ref().map(|vs| vs.selection(app.cursor));
         terminal.draw(|frame| {
-            render::render(frame, app);
+            render::render(frame, app, selection);
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
@@ -145,7 +146,7 @@ fn run_loop(
                             }
                         }
                     }
-                    Mode::Visual | Mode::VisualBlock => {
+                    Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
                         if let Some(ref vs) = visual_state {
                             let action = vs.handle_key(key, app);
                             if action == Action::ChangeMode(Mode::Normal) {
@@ -194,10 +195,13 @@ fn run_loop(
                 };
 
                 if let Action::ChangeMode(Mode::Visual) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, false));
+                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Character));
+                }
+                if let Action::ChangeMode(Mode::VisualLine) = &action {
+                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Line));
                 }
                 if let Action::ChangeMode(Mode::VisualBlock) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, true));
+                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Block));
                 }
                 if let Action::ChangeMode(Mode::Insert) = &action {
                     insert_cursor = app.sheet.get_cell(app.cursor)

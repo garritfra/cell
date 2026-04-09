@@ -8,6 +8,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Direction},
 };
+use cell_core::model::CellPos;
 use crate::app::App;
 use crate::action::Mode;
 use grid::Grid;
@@ -16,7 +17,7 @@ use status_bar::StatusBar;
 use command_line::CommandLine;
 use help::HelpView;
 
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &App, selection: Option<(CellPos, CellPos)>) {
     if app.mode == Mode::Help {
         frame.render_widget(HelpView {
             registry: &app.help_registry,
@@ -44,7 +45,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     }, chunks[0]);
 
     frame.render_widget(Grid {
-        sheet: &app.sheet, viewport: &app.viewport, cursor: app.cursor, selection: None,
+        sheet: &app.sheet, viewport: &app.viewport, cursor: app.cursor, selection,
     }, chunks[1]);
 
     let file_name = app.file_path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str());

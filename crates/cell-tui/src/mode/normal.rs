@@ -51,6 +51,7 @@ impl NormalState {
             KeyCode::Char('i') | KeyCode::Char('a') => Action::ChangeMode(Mode::Insert),
             KeyCode::Char('o') => Action::ChangeMode(Mode::Insert),
             KeyCode::Char('v') => Action::ChangeMode(Mode::Visual),
+            KeyCode::Char('V') => Action::ChangeMode(Mode::VisualLine),
             KeyCode::Char(':') => Action::ChangeMode(Mode::Command),
             KeyCode::Char('x') => Action::ClearCell(app.cursor),
             KeyCode::Char('p') => Action::Paste(app.cursor),

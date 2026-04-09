@@ -61,6 +61,7 @@ pub enum Mode {
     Normal,
     Insert,
     Visual,
+    VisualLine,
     VisualBlock,
     Command,
     Help,
