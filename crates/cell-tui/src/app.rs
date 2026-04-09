@@ -198,10 +198,11 @@ impl App {
                 self.register = Some(Register::Row(cells));
             }
             Action::YankRange { start, end } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 let mut block = Vec::new();
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
-                    for col in start.1..=end.1 {
+                    for col in start.1..=max_col {
                         let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
                         row_data.push(raw);
                     }
@@ -210,10 +211,11 @@ impl App {
                 self.register = Some(Register::Block(block));
             }
             Action::ClearRange { start, end } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 let mut block = Vec::new();
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
-                    for col in start.1..=end.1 {
+                    for col in start.1..=max_col {
                         let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
                         row_data.push(raw);
                         self.sheet.clear_cell((row, col));
