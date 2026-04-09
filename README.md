@@ -19,13 +19,19 @@ A terminal spreadsheet editor with Vim keybindings, written in Rust.
 
 ## Install
 
+From [crates.io](https://crates.io/crates/cell-sheet-tui):
+
 ```sh
-cargo install --path crates/cell-sheet-tui
+cargo install cell-sheet-tui
 ```
 
-Or build from source:
+Pre-built binaries for Linux, macOS, and Windows are available on the [GitHub Releases](https://github.com/garritfra/cell/releases) page.
+
+### Build from source
 
 ```sh
+git clone https://github.com/garritfra/cell.git
+cd cell
 cargo build --release
 # Binary at target/release/cell
 ```
