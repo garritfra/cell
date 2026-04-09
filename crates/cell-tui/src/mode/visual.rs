@@ -3,23 +3,37 @@ use cell_core::model::CellPos;
 use crate::action::{Action, Direction, Mode};
 use crate::app::App;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum VisualKind {
+    Character,
+    Line,
+    Block,
+}
+
 pub struct VisualState {
     pub anchor: CellPos,
-    #[allow(dead_code)]
-    pub is_block: bool,
+    pub kind: VisualKind,
 }
 
 impl VisualState {
-    pub fn new(anchor: CellPos, is_block: bool) -> Self {
-        VisualState { anchor, is_block }
+    pub fn new(anchor: CellPos, kind: VisualKind) -> Self {
+        VisualState { anchor, kind }
     }
 
     pub fn selection(&self, cursor: CellPos) -> (CellPos, CellPos) {
         let r1 = self.anchor.0.min(cursor.0);
         let r2 = self.anchor.0.max(cursor.0);
-        let c1 = self.anchor.1.min(cursor.1);
-        let c2 = self.anchor.1.max(cursor.1);
-        ((r1, c1), (r2, c2))
+        match self.kind {
+            VisualKind::Line => {
+                // Select entire rows — use 0 to usize::MAX so all visible columns match
+                ((r1, 0), (r2, usize::MAX))
+            }
+            VisualKind::Character | VisualKind::Block => {
+                let c1 = self.anchor.1.min(cursor.1);
+                let c2 = self.anchor.1.max(cursor.1);
+                ((r1, c1), (r2, c2))
+            }
+        }
     }
 
     pub fn handle_key(&self, key: KeyEvent, app: &App) -> Action {
@@ -29,6 +43,7 @@ impl VisualState {
             KeyCode::Char('j') | KeyCode::Down => Action::MoveCursor(Direction::Down),
             KeyCode::Char('k') | KeyCode::Up => Action::MoveCursor(Direction::Up),
             KeyCode::Char('l') | KeyCode::Right => Action::MoveCursor(Direction::Right),
+            KeyCode::Char('c') => Action::ChangeRange { start, end },
             KeyCode::Char('d') => Action::ClearRange { start, end },
             KeyCode::Char('y') => Action::YankRange { start, end },
             KeyCode::Esc => Action::ChangeMode(Mode::Normal),
@@ -46,7 +61,7 @@ mod tests {
 
     #[test]
     fn selection_normalized() {
-        let state = VisualState::new((2, 3), false);
+        let state = VisualState::new((2, 3), VisualKind::Character);
         let (start, end) = state.selection((0, 1));
         assert_eq!(start, (0, 1));
         assert_eq!(end, (2, 3));
@@ -54,16 +69,24 @@ mod tests {
 
     #[test]
     fn selection_same_cell() {
-        let state = VisualState::new((1, 1), false);
+        let state = VisualState::new((1, 1), VisualKind::Character);
         let (start, end) = state.selection((1, 1));
         assert_eq!(start, (1, 1));
         assert_eq!(end, (1, 1));
     }
 
     #[test]
+    fn selection_line_selects_full_rows() {
+        let state = VisualState::new((1, 3), VisualKind::Line);
+        let (start, end) = state.selection((3, 1));
+        assert_eq!(start, (1, 0));
+        assert_eq!(end, (3, usize::MAX));
+    }
+
+    #[test]
     fn hjkl_in_visual() {
         let app = App::new();
-        let state = VisualState::new((0, 0), false);
+        let state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(state.handle_key(key(KeyCode::Char('j')), &app), Action::MoveCursor(Direction::Down));
     }
 
@@ -71,7 +94,7 @@ mod tests {
     fn d_clears_range() {
         let mut app = App::new();
         app.cursor = (2, 2);
-        let state = VisualState::new((0, 0), false);
+        let state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(state.handle_key(key(KeyCode::Char('d')), &app), Action::ClearRange { start: (0, 0), end: (2, 2) });
     }
 
@@ -79,14 +102,14 @@ mod tests {
     fn y_yanks_range() {
         let mut app = App::new();
         app.cursor = (1, 1);
-        let state = VisualState::new((0, 0), false);
+        let state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(state.handle_key(key(KeyCode::Char('y')), &app), Action::YankRange { start: (0, 0), end: (1, 1) });
     }
 
     #[test]
     fn esc_exits_visual() {
         let app = App::new();
-        let state = VisualState::new((0, 0), false);
+        let state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(state.handle_key(key(KeyCode::Esc), &app), Action::ChangeMode(Mode::Normal));
     }
 }

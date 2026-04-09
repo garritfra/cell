@@ -13,6 +13,15 @@ pub struct FormulaBar<'a> {
     pub is_editing: bool,
 }
 
+impl<'a> FormulaBar<'a> {
+    /// Returns the x offset where content text begins (address width + separator).
+    pub fn content_x(&self) -> u16 {
+        let addr = format!(" {}{} ", col_index_to_label(self.cursor.1), self.cursor.0 + 1);
+        let sep = " │ ";
+        addr.len() as u16 + sep.len() as u16
+    }
+}
+
 impl<'a> Widget for FormulaBar<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if area.height == 0 { return; }

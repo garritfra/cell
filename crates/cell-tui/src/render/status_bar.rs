@@ -28,6 +28,7 @@ impl<'a> Widget for StatusBar<'a> {
             Mode::Normal => " NORMAL ",
             Mode::Insert => " INSERT ",
             Mode::Visual => " VISUAL ",
+            Mode::VisualLine => " V-LINE ",
             Mode::VisualBlock => " V-BLOCK ",
             Mode::Command => " COMMAND ",
             Mode::Help => " HELP ",
@@ -35,13 +36,13 @@ impl<'a> Widget for StatusBar<'a> {
         let mode_bg = match self.mode {
             Mode::Normal => Color::Rgb(68, 68, 68),       // dark gray — Vim default
             Mode::Insert => Color::Rgb(95, 175, 0),       // green — Vim insert
-            Mode::Visual | Mode::VisualBlock => Color::Rgb(215, 135, 0), // orange — Vim visual
-            Mode::Command => Color::Rgb(68, 68, 68),      // dark gray — same as normal
+            Mode::Visual | Mode::VisualLine | Mode::VisualBlock => Color::Rgb(215, 135, 0), // orange — Vim visual
+            Mode::Command | Mode::Help => Color::Rgb(68, 68, 68), // dark gray — same as normal
         };
         let mode_fg = match self.mode {
-            Mode::Normal | Mode::Command => Color::White,
+            Mode::Normal | Mode::Command | Mode::Help => Color::White,
             Mode::Insert => Color::Black,
-            Mode::Visual | Mode::VisualBlock => Color::Black,
+            Mode::Visual | Mode::VisualLine | Mode::VisualBlock => Color::Black,
         };
         let mode_style = Style::default().fg(mode_fg).bg(mode_bg).add_modifier(Modifier::BOLD);
         buf.set_string(area.x, area.y, mode_str, mode_style);

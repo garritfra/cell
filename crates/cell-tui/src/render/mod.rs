@@ -8,6 +8,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Direction},
 };
+use cell_core::model::CellPos;
 use crate::app::App;
 use crate::action::Mode;
 use grid::Grid;
@@ -16,7 +17,7 @@ use status_bar::StatusBar;
 use command_line::CommandLine;
 use help::HelpView;
 
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &App, selection: Option<(CellPos, CellPos)>, insert_cursor: usize) {
     if app.mode == Mode::Help {
         frame.render_widget(HelpView {
             registry: &app.help_registry,
@@ -38,13 +39,24 @@ pub fn render(frame: &mut Frame, app: &App) {
         .split(area);
 
     let cell_content = app.sheet.get_cell(app.cursor).map(|c| c.raw.as_str()).unwrap_or("");
-    let display_content = if app.mode == Mode::Insert { &app.insert_buffer } else { cell_content };
-    frame.render_widget(FormulaBar {
-        cursor: app.cursor, content: display_content, is_editing: app.mode == Mode::Insert,
-    }, chunks[0]);
+    let is_editing = app.mode == Mode::Insert;
+    let display_content = if is_editing { &app.insert_buffer } else { cell_content };
+    let formula_bar = FormulaBar {
+        cursor: app.cursor, content: display_content, is_editing,
+    };
+    let content_x = formula_bar.content_x();
+    frame.render_widget(formula_bar, chunks[0]);
+
+    if is_editing {
+        let cursor_x = chunks[0].x + content_x + insert_cursor as u16;
+        let cursor_y = chunks[0].y;
+        if cursor_x < chunks[0].x + chunks[0].width {
+            frame.set_cursor_position((cursor_x, cursor_y));
+        }
+    }
 
     frame.render_widget(Grid {
-        sheet: &app.sheet, viewport: &app.viewport, cursor: app.cursor, selection: None,
+        sheet: &app.sheet, viewport: &app.viewport, cursor: app.cursor, selection,
     }, chunks[1]);
 
     let file_name = app.file_path.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str());

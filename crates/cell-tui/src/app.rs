@@ -111,6 +111,31 @@ impl App {
                     self.dirty = true;
                 }
             }
+            Action::ChangeCell(pos) => {
+                let old_raw = self.sheet.get_cell(pos).map(|c| c.raw.clone()).unwrap_or_default();
+                if !old_raw.is_empty() {
+                    self.undo_stack.push(UndoEntry::CellEdit { pos, old_raw, new_raw: String::new() });
+                    self.sheet.clear_cell(pos);
+                    self.dirty = true;
+                }
+                self.insert_buffer = String::new();
+                self.mode = Mode::Insert;
+            }
+            Action::ChangeRange { start, end } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
+                for row in start.0..=end.0 {
+                    for col in start.1..=max_col {
+                        let old_raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
+                        if !old_raw.is_empty() {
+                            self.undo_stack.push(UndoEntry::CellEdit { pos: (row, col), old_raw, new_raw: String::new() });
+                            self.sheet.clear_cell((row, col));
+                        }
+                    }
+                }
+                self.dirty = true;
+                self.insert_buffer = String::new();
+                self.mode = Mode::Insert;
+            }
             Action::GotoFirstRow => { self.cursor = (0, self.cursor.1); self.viewport.ensure_visible(self.cursor); }
             Action::GotoLastRow => {
                 let last = if self.sheet.row_count > 0 { self.sheet.row_count - 1 } else { 0 };
@@ -198,10 +223,11 @@ impl App {
                 self.register = Some(Register::Row(cells));
             }
             Action::YankRange { start, end } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 let mut block = Vec::new();
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
-                    for col in start.1..=end.1 {
+                    for col in start.1..=max_col {
                         let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
                         row_data.push(raw);
                     }
@@ -210,10 +236,11 @@ impl App {
                 self.register = Some(Register::Block(block));
             }
             Action::ClearRange { start, end } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 let mut block = Vec::new();
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
-                    for col in start.1..=end.1 {
+                    for col in start.1..=max_col {
                         let raw = self.sheet.get_cell((row, col)).map(|c| c.raw.clone()).unwrap_or_default();
                         row_data.push(raw);
                         self.sheet.clear_cell((row, col));
@@ -234,19 +261,22 @@ impl App {
                 self.dirty = true;
             }
             Action::Paste(pos) | Action::PasteBefore(pos) => {
-                let dest_row = if matches!(action, Action::Paste(_)) { pos.0 + 1 } else { pos.0 };
+                let is_after = matches!(action, Action::Paste(_));
                 if let Some(reg) = &self.register.clone() {
                     match reg {
                         Register::Cell(raw) => {
-                            let adjusted = crate::clipboard::adjust_formula(raw, dest_row as isize - pos.0 as isize, 0);
+                            // Cell: p pastes at cursor, P also at cursor (no row offset)
+                            let adjusted = crate::clipboard::adjust_formula(raw, 0, 0);
                             if adjusted.starts_with('=') {
-                                cell_core::formula::deps::set_formula(&mut self.sheet, &mut self.deps, (dest_row, pos.1), &adjusted);
+                                cell_core::formula::deps::set_formula(&mut self.sheet, &mut self.deps, pos, &adjusted);
                             } else {
-                                self.sheet.set_cell((dest_row, pos.1), &adjusted);
+                                self.sheet.set_cell(pos, &adjusted);
                             }
                             self.dirty = true;
                         }
                         Register::Row(cells) => {
+                            // Row (yy/dd): p pastes on line below, P on current line
+                            let dest_row = if is_after { pos.0 + 1 } else { pos.0 };
                             for (col, raw) in cells.iter().enumerate() {
                                 if !raw.is_empty() {
                                     let adjusted = crate::clipboard::adjust_formula(raw, dest_row as isize - pos.0 as isize, 0);
@@ -256,11 +286,12 @@ impl App {
                             self.dirty = true;
                         }
                         Register::Block(block) => {
+                            // Block (visual selection): p pastes at cursor position
                             for (r_off, row_data) in block.iter().enumerate() {
                                 for (c_off, raw) in row_data.iter().enumerate() {
                                     if !raw.is_empty() {
                                         let adjusted = crate::clipboard::adjust_formula(raw, r_off as isize, c_off as isize);
-                                        self.sheet.set_cell((dest_row + r_off, pos.1 + c_off), &adjusted);
+                                        self.sheet.set_cell((pos.0 + r_off, pos.1 + c_off), &adjusted);
                                     }
                                 }
                             }

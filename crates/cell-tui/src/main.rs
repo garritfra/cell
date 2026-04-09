@@ -48,6 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    use cell_core::formula::deps::{set_formula, recalculate};
+
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
         "csv" => {
@@ -72,6 +74,17 @@ fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::e
         }
     }
     app.file_path = Some(path.to_path_buf());
+
+    // Register formulas in the dependency graph and evaluate them
+    let formula_cells: Vec<_> = app.sheet.cells.iter()
+        .filter(|(_, cell)| cell.raw.starts_with('='))
+        .map(|(pos, cell)| (*pos, cell.raw.clone()))
+        .collect();
+    for (pos, raw) in formula_cells {
+        set_formula(&mut app.sheet, &mut app.deps, pos, &raw);
+    }
+    recalculate(&mut app.sheet, &app.deps);
+
     Ok(())
 }
 
@@ -82,7 +95,7 @@ fn run_loop(
     use mode::normal::NormalState;
     use mode::insert::{handle_insert_key, handle_insert_char, InsertAction};
     use mode::command::{handle_command_key, parse_command, CommandAction};
-    use mode::visual::VisualState;
+    use mode::visual::{VisualState, VisualKind};
     use mode::help::HelpState;
 
     let mut normal_state = NormalState::new();
@@ -96,8 +109,10 @@ fn run_loop(
         let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
         app.viewport.visible_rows = grid_height;
 
+        let selection = visual_state.as_ref().map(|vs| vs.selection(app.cursor));
+        let ic = insert_cursor;
         terminal.draw(|frame| {
-            render::render(frame, app);
+            render::render(frame, app, selection, ic);
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
@@ -145,11 +160,19 @@ fn run_loop(
                             }
                         }
                     }
-                    Mode::Visual | Mode::VisualBlock => {
+                    Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
                         if let Some(ref vs) = visual_state {
                             let action = vs.handle_key(key, app);
-                            if action == Action::ChangeMode(Mode::Normal) {
+                            let exits = matches!(
+                                action,
+                                Action::ChangeMode(Mode::Normal)
+                                    | Action::ClearRange { .. }
+                                    | Action::YankRange { .. }
+                                    | Action::ChangeRange { .. }
+                            );
+                            if exits {
                                 visual_state = None;
+                                app.mode = Mode::Normal;
                             }
                             action
                         } else {
@@ -194,14 +217,20 @@ fn run_loop(
                 };
 
                 if let Action::ChangeMode(Mode::Visual) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, false));
+                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Character));
+                }
+                if let Action::ChangeMode(Mode::VisualLine) = &action {
+                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Line));
                 }
                 if let Action::ChangeMode(Mode::VisualBlock) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, true));
+                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Block));
                 }
-                if let Action::ChangeMode(Mode::Insert) = &action {
+                if matches!(&action, Action::ChangeMode(Mode::Insert)) {
                     insert_cursor = app.sheet.get_cell(app.cursor)
                         .map(|c| c.raw.len()).unwrap_or(0);
+                }
+                if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
+                    insert_cursor = 0;
                 }
                 if let Action::ChangeMode(Mode::Command) = &action {
                     if key.code == KeyCode::Char('/') {
