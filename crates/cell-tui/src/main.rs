@@ -149,8 +149,15 @@ fn run_loop(
                     Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
                         if let Some(ref vs) = visual_state {
                             let action = vs.handle_key(key, app);
-                            if action == Action::ChangeMode(Mode::Normal) {
+                            let exits = matches!(
+                                action,
+                                Action::ChangeMode(Mode::Normal)
+                                    | Action::ClearRange { .. }
+                                    | Action::YankRange { .. }
+                            );
+                            if exits {
                                 visual_state = None;
+                                app.mode = Mode::Normal;
                             }
                             action
                         } else {
