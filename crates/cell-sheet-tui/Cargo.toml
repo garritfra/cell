@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-readme.workspace = true
+readme = "../../README.md"
 description = "A terminal spreadsheet editor with Vim-like keybindings"
 
 [[bin]]
