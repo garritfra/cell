@@ -1,3 +1,5 @@
+pub mod entries;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HelpCategory {
     Normal,
@@ -32,6 +34,18 @@ pub struct HelpRegistry {
 }
 
 impl HelpRegistry {
+    /// Build the default registry with all built-in help entries.
+    pub fn new() -> Self {
+        use entries::*;
+        Self::from_entries(&[
+            NORMAL_ENTRIES,
+            INSERT_ENTRIES,
+            VISUAL_ENTRIES,
+            COMMAND_ENTRIES,
+            FORMULA_ENTRIES,
+        ])
+    }
+
     /// Build a registry from multiple static entry slices (one per module).
     pub fn from_entries(slices: &[&'static [HelpEntry]]) -> Self {
         let mut entries = Vec::new();
@@ -134,5 +148,18 @@ mod tests {
         let normals = registry.by_category(HelpCategory::Normal);
         assert_eq!(normals.len(), 1);
         assert_eq!(normals[0].tags[0], "h");
+    }
+
+    #[test]
+    fn full_registry_has_expected_tags() {
+        let registry = HelpRegistry::new();
+        assert!(registry.find("h").is_some(), "missing h");
+        assert!(registry.find("dd").is_some(), "missing dd");
+        assert!(registry.find(":w").is_some(), "missing :w");
+        assert!(registry.find(":help").is_some(), "missing :help");
+        assert!(registry.find("SUM").is_some(), "missing SUM");
+        assert!(registry.find("IF").is_some(), "missing IF");
+        assert!(registry.find("Esc").is_some(), "missing Esc");
+        assert!(registry.find("v").is_some(), "missing v");
     }
 }
