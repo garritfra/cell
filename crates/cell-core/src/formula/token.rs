@@ -35,15 +35,41 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, CellError> {
 
     while i < chars.len() {
         match chars[i] {
-            ' ' | '\t' => { i += 1; }
-            '+' => { tokens.push(Token::Plus); i += 1; }
-            '-' => { tokens.push(Token::Minus); i += 1; }
-            '*' => { tokens.push(Token::Star); i += 1; }
-            '/' => { tokens.push(Token::Slash); i += 1; }
-            '(' => { tokens.push(Token::LParen); i += 1; }
-            ')' => { tokens.push(Token::RParen); i += 1; }
-            ',' => { tokens.push(Token::Comma); i += 1; }
-            ':' => { tokens.push(Token::Colon); i += 1; }
+            ' ' | '\t' => {
+                i += 1;
+            }
+            '+' => {
+                tokens.push(Token::Plus);
+                i += 1;
+            }
+            '-' => {
+                tokens.push(Token::Minus);
+                i += 1;
+            }
+            '*' => {
+                tokens.push(Token::Star);
+                i += 1;
+            }
+            '/' => {
+                tokens.push(Token::Slash);
+                i += 1;
+            }
+            '(' => {
+                tokens.push(Token::LParen);
+                i += 1;
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                i += 1;
+            }
+            ',' => {
+                tokens.push(Token::Comma);
+                i += 1;
+            }
+            ':' => {
+                tokens.push(Token::Colon);
+                i += 1;
+            }
             '>' => {
                 if i + 1 < chars.len() && chars[i + 1] == '=' {
                     tokens.push(Token::Gte);
@@ -65,7 +91,10 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, CellError> {
                     i += 1;
                 }
             }
-            '=' => { tokens.push(Token::Eq); i += 1; }
+            '=' => {
+                tokens.push(Token::Eq);
+                i += 1;
+            }
             '"' => {
                 i += 1;
                 let start = i;
@@ -111,7 +140,12 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, CellError> {
                 let row: String = chars[row_start..j].iter().collect();
 
                 if !row.is_empty() {
-                    tokens.push(Token::CellRef { col, row, abs_col, abs_row });
+                    tokens.push(Token::CellRef {
+                        col,
+                        row,
+                        abs_col,
+                        abs_row,
+                    });
                 } else if !abs_col && !abs_row {
                     if col == "TRUE" {
                         tokens.push(Token::Bool(true));
@@ -153,8 +187,8 @@ mod tests {
 
     #[test]
     fn tokenize_float() {
-        let tokens = tokenize("3.14").unwrap();
-        assert_eq!(tokens, vec![Token::Number(3.14)]);
+        let tokens = tokenize("3.15").unwrap();
+        assert_eq!(tokens, vec![Token::Number(3.15)]);
     }
 
     #[test]
@@ -166,50 +200,61 @@ mod tests {
     #[test]
     fn tokenize_cell_ref() {
         let tokens = tokenize("A1").unwrap();
-        assert_eq!(tokens, vec![Token::CellRef {
-            col: "A".into(),
-            row: "1".into(),
-            abs_col: false,
-            abs_row: false,
-        }]);
+        assert_eq!(
+            tokens,
+            vec![Token::CellRef {
+                col: "A".into(),
+                row: "1".into(),
+                abs_col: false,
+                abs_row: false,
+            }]
+        );
     }
 
     #[test]
     fn tokenize_absolute_cell_ref() {
         let tokens = tokenize("$A$1").unwrap();
-        assert_eq!(tokens, vec![Token::CellRef {
-            col: "A".into(),
-            row: "1".into(),
-            abs_col: true,
-            abs_row: true,
-        }]);
+        assert_eq!(
+            tokens,
+            vec![Token::CellRef {
+                col: "A".into(),
+                row: "1".into(),
+                abs_col: true,
+                abs_row: true,
+            }]
+        );
     }
 
     #[test]
     fn tokenize_mixed_ref() {
         let tokens = tokenize("$A1").unwrap();
-        assert_eq!(tokens, vec![Token::CellRef {
-            col: "A".into(),
-            row: "1".into(),
-            abs_col: true,
-            abs_row: false,
-        }]);
+        assert_eq!(
+            tokens,
+            vec![Token::CellRef {
+                col: "A".into(),
+                row: "1".into(),
+                abs_col: true,
+                abs_row: false,
+            }]
+        );
     }
 
     #[test]
     fn tokenize_operators() {
         let tokens = tokenize("+-*/").unwrap();
-        assert_eq!(tokens, vec![
-            Token::Plus, Token::Minus, Token::Star, Token::Slash,
-        ]);
+        assert_eq!(
+            tokens,
+            vec![Token::Plus, Token::Minus, Token::Star, Token::Slash,]
+        );
     }
 
     #[test]
     fn tokenize_comparison_operators() {
         let tokens = tokenize(">>=<<=<>").unwrap();
-        assert_eq!(tokens, vec![
-            Token::Gt, Token::Gte, Token::Lt, Token::Lte, Token::Neq,
-        ]);
+        assert_eq!(
+            tokens,
+            vec![Token::Gt, Token::Gte, Token::Lt, Token::Lte, Token::Neq,]
+        );
     }
 
     #[test]
@@ -233,16 +278,29 @@ mod tests {
     #[test]
     fn tokenize_full_formula() {
         let tokens = tokenize("SUM(A1:A3)+1").unwrap();
-        assert_eq!(tokens, vec![
-            Token::Ident("SUM".into()),
-            Token::LParen,
-            Token::CellRef { col: "A".into(), row: "1".into(), abs_col: false, abs_row: false },
-            Token::Colon,
-            Token::CellRef { col: "A".into(), row: "3".into(), abs_col: false, abs_row: false },
-            Token::RParen,
-            Token::Plus,
-            Token::Number(1.0),
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Ident("SUM".into()),
+                Token::LParen,
+                Token::CellRef {
+                    col: "A".into(),
+                    row: "1".into(),
+                    abs_col: false,
+                    abs_row: false
+                },
+                Token::Colon,
+                Token::CellRef {
+                    col: "A".into(),
+                    row: "3".into(),
+                    abs_col: false,
+                    abs_row: false
+                },
+                Token::RParen,
+                Token::Plus,
+                Token::Number(1.0),
+            ]
+        );
     }
 
     #[test]
@@ -266,21 +324,37 @@ mod tests {
     #[test]
     fn tokenize_whitespace_ignored() {
         let tokens = tokenize(" A1 + B1 ").unwrap();
-        assert_eq!(tokens, vec![
-            Token::CellRef { col: "A".into(), row: "1".into(), abs_col: false, abs_row: false },
-            Token::Plus,
-            Token::CellRef { col: "B".into(), row: "1".into(), abs_col: false, abs_row: false },
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::CellRef {
+                    col: "A".into(),
+                    row: "1".into(),
+                    abs_col: false,
+                    abs_row: false
+                },
+                Token::Plus,
+                Token::CellRef {
+                    col: "B".into(),
+                    row: "1".into(),
+                    abs_col: false,
+                    abs_row: false
+                },
+            ]
+        );
     }
 
     #[test]
     fn tokenize_multi_letter_col() {
         let tokens = tokenize("AA10").unwrap();
-        assert_eq!(tokens, vec![Token::CellRef {
-            col: "AA".into(),
-            row: "10".into(),
-            abs_col: false,
-            abs_row: false,
-        }]);
+        assert_eq!(
+            tokens,
+            vec![Token::CellRef {
+                col: "AA".into(),
+                row: "10".into(),
+                abs_col: false,
+                abs_row: false,
+            }]
+        );
     }
 }

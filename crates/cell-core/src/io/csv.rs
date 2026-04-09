@@ -1,5 +1,5 @@
-use std::io::{Read, Write};
 use crate::model::Sheet;
+use std::io::{Read, Write};
 
 const MAX_COL_WIDTH: u16 = 40;
 const DEFAULT_COL_WIDTH: u16 = 10;
@@ -30,7 +30,8 @@ pub fn read_csv<R: Read>(reader: R, delimiter: u8) -> Result<Sheet, Box<dyn std:
     }
     sheet.col_count = max_col;
 
-    sheet.col_widths = col_content_widths.iter()
+    sheet.col_widths = col_content_widths
+        .iter()
         .map(|&w| {
             let width = (w as u16).max(DEFAULT_COL_WIDTH);
             width.min(MAX_COL_WIDTH)
@@ -40,7 +41,11 @@ pub fn read_csv<R: Read>(reader: R, delimiter: u8) -> Result<Sheet, Box<dyn std:
     Ok(sheet)
 }
 
-pub fn write_csv<W: Write>(sheet: &Sheet, writer: W, delimiter: u8) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_csv<W: Write>(
+    sheet: &Sheet,
+    writer: W,
+    delimiter: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut csv_writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
         .from_writer(writer);
@@ -71,32 +76,53 @@ mod tests {
         let sheet = read_csv(data.as_bytes(), b',').unwrap();
         assert_eq!(sheet.row_count, 3);
         assert_eq!(sheet.col_count, 2);
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Text("Name".into()));
-        assert_eq!(sheet.get_cell((1, 1)).unwrap().value, CellValue::Number(95.0));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("Name".into())
+        );
+        assert_eq!(
+            sheet.get_cell((1, 1)).unwrap().value,
+            CellValue::Number(95.0)
+        );
     }
 
     #[test]
     fn read_tsv() {
         let data = "A\tB\n1\t2\n";
         let sheet = read_csv(data.as_bytes(), b'\t').unwrap();
-        assert_eq!(sheet.get_cell((1, 0)).unwrap().value, CellValue::Number(1.0));
-        assert_eq!(sheet.get_cell((1, 1)).unwrap().value, CellValue::Number(2.0));
+        assert_eq!(
+            sheet.get_cell((1, 0)).unwrap().value,
+            CellValue::Number(1.0)
+        );
+        assert_eq!(
+            sheet.get_cell((1, 1)).unwrap().value,
+            CellValue::Number(2.0)
+        );
     }
 
     #[test]
     fn read_csv_empty_cells() {
         let data = "a,,b\n,,\n";
         let sheet = read_csv(data.as_bytes(), b',').unwrap();
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Text("a".into()));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("a".into())
+        );
         assert!(sheet.get_cell((0, 1)).is_none());
-        assert_eq!(sheet.get_cell((0, 2)).unwrap().value, CellValue::Text("b".into()));
+        assert_eq!(
+            sheet.get_cell((0, 2)).unwrap().value,
+            CellValue::Text("b".into())
+        );
     }
 
     #[test]
     fn read_csv_quoted_fields() {
         let data = "\"hello, world\",42\n";
         let sheet = read_csv(data.as_bytes(), b',').unwrap();
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Text("hello, world".into()));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("hello, world".into())
+        );
     }
 
     #[test]
@@ -104,7 +130,10 @@ mod tests {
         let data = "=SUM(A1:A3)\n";
         let sheet = read_csv(data.as_bytes(), b',').unwrap();
         assert_eq!(sheet.get_cell((0, 0)).unwrap().raw, "=SUM(A1:A3)");
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Text("=SUM(A1:A3)".into()));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("=SUM(A1:A3)".into())
+        );
     }
 
     #[test]

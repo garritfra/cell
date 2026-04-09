@@ -1,7 +1,7 @@
-use crossterm::event::{KeyCode, KeyEvent};
-use cell_core::model::CellPos;
 use crate::action::{Action, Direction, Mode};
 use crate::app::App;
+use cell_core::model::CellPos;
+use crossterm::event::{KeyCode, KeyEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VisualKind {
@@ -57,7 +57,9 @@ mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
 
-    fn key(code: KeyCode) -> KeyEvent { KeyEvent::new(code, KeyModifiers::NONE) }
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
 
     #[test]
     fn selection_normalized() {
@@ -87,7 +89,10 @@ mod tests {
     fn hjkl_in_visual() {
         let app = App::new();
         let state = VisualState::new((0, 0), VisualKind::Character);
-        assert_eq!(state.handle_key(key(KeyCode::Char('j')), &app), Action::MoveCursor(Direction::Down));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('j')), &app),
+            Action::MoveCursor(Direction::Down)
+        );
     }
 
     #[test]
@@ -95,7 +100,13 @@ mod tests {
         let mut app = App::new();
         app.cursor = (2, 2);
         let state = VisualState::new((0, 0), VisualKind::Character);
-        assert_eq!(state.handle_key(key(KeyCode::Char('d')), &app), Action::ClearRange { start: (0, 0), end: (2, 2) });
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('d')), &app),
+            Action::ClearRange {
+                start: (0, 0),
+                end: (2, 2)
+            }
+        );
     }
 
     #[test]
@@ -103,13 +114,22 @@ mod tests {
         let mut app = App::new();
         app.cursor = (1, 1);
         let state = VisualState::new((0, 0), VisualKind::Character);
-        assert_eq!(state.handle_key(key(KeyCode::Char('y')), &app), Action::YankRange { start: (0, 0), end: (1, 1) });
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('y')), &app),
+            Action::YankRange {
+                start: (0, 0),
+                end: (1, 1)
+            }
+        );
     }
 
     #[test]
     fn esc_exits_visual() {
         let app = App::new();
         let state = VisualState::new((0, 0), VisualKind::Character);
-        assert_eq!(state.handle_key(key(KeyCode::Esc), &app), Action::ChangeMode(Mode::Normal));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Esc), &app),
+            Action::ChangeMode(Mode::Normal)
+        );
     }
 }

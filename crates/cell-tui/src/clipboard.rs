@@ -1,5 +1,5 @@
+use cell_core::formula::token::{tokenize, Token};
 use cell_core::model::{col_index_to_label, col_label_to_index};
-use cell_core::formula::token::{Token, tokenize};
 
 #[derive(Debug, Clone)]
 pub enum Register {
@@ -9,7 +9,9 @@ pub enum Register {
 }
 
 pub fn adjust_formula(raw: &str, row_delta: isize, col_delta: isize) -> String {
-    if !raw.starts_with('=') { return raw.to_string(); }
+    if !raw.starts_with('=') {
+        return raw.to_string();
+    }
     let formula = &raw[1..];
     let tokens = match tokenize(formula) {
         Ok(t) => t,
@@ -18,7 +20,12 @@ pub fn adjust_formula(raw: &str, row_delta: isize, col_delta: isize) -> String {
     let mut result = String::from("=");
     for token in &tokens {
         match token {
-            Token::CellRef { col, row, abs_col, abs_row } => {
+            Token::CellRef {
+                col,
+                row,
+                abs_col,
+                abs_row,
+            } => {
                 let new_col = if *abs_col {
                     format!("${}", col)
                 } else {
@@ -36,8 +43,11 @@ pub fn adjust_formula(raw: &str, row_delta: isize, col_delta: isize) -> String {
                 result.push_str(&format!("{}{}", new_col, new_row));
             }
             Token::Number(n) => {
-                if n.fract() == 0.0 { result.push_str(&format!("{}", *n as i64)); }
-                else { result.push_str(&format!("{}", n)); }
+                if n.fract() == 0.0 {
+                    result.push_str(&format!("{}", *n as i64));
+                } else {
+                    result.push_str(&format!("{}", n));
+                }
             }
             Token::StringLit(s) => result.push_str(&format!("\"{}\"", s)),
             Token::Bool(b) => result.push_str(if *b { "TRUE" } else { "FALSE" }),

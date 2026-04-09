@@ -1,6 +1,6 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::action::{Action, Direction, Mode};
 use crate::app::App;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub struct NormalState {
     pub pending: Option<char>,
@@ -40,9 +40,18 @@ impl NormalState {
             KeyCode::Char('j') | KeyCode::Down => Action::MoveCursor(Direction::Down),
             KeyCode::Char('k') | KeyCode::Up => Action::MoveCursor(Direction::Up),
             KeyCode::Char('l') | KeyCode::Right => Action::MoveCursor(Direction::Right),
-            KeyCode::Char('g') => { self.pending = Some('g'); Action::Noop }
-            KeyCode::Char('d') => { self.pending = Some('d'); Action::Noop }
-            KeyCode::Char('y') => { self.pending = Some('y'); Action::Noop }
+            KeyCode::Char('g') => {
+                self.pending = Some('g');
+                Action::Noop
+            }
+            KeyCode::Char('d') => {
+                self.pending = Some('d');
+                Action::Noop
+            }
+            KeyCode::Char('y') => {
+                self.pending = Some('y');
+                Action::Noop
+            }
             KeyCode::Char('G') => Action::GotoLastRow,
             KeyCode::Char('0') => Action::GotoFirstCol,
             KeyCode::Char('$') => Action::GotoLastCol,
@@ -84,62 +93,104 @@ mod tests {
     fn hjkl_navigation() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('h')), &app), Action::MoveCursor(Direction::Left));
-        assert_eq!(state.handle_key(key(KeyCode::Char('j')), &app), Action::MoveCursor(Direction::Down));
-        assert_eq!(state.handle_key(key(KeyCode::Char('k')), &app), Action::MoveCursor(Direction::Up));
-        assert_eq!(state.handle_key(key(KeyCode::Char('l')), &app), Action::MoveCursor(Direction::Right));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('h')), &app),
+            Action::MoveCursor(Direction::Left)
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('j')), &app),
+            Action::MoveCursor(Direction::Down)
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('k')), &app),
+            Action::MoveCursor(Direction::Up)
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('l')), &app),
+            Action::MoveCursor(Direction::Right)
+        );
     }
 
     #[test]
     fn gg_goes_to_first_row() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('g')), &app), Action::Noop);
-        assert_eq!(state.handle_key(key(KeyCode::Char('g')), &app), Action::GotoFirstRow);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('g')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('g')), &app),
+            Action::GotoFirstRow
+        );
     }
 
     #[test]
     fn shift_g_goes_to_last_row() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('G')), &app), Action::GotoLastRow);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('G')), &app),
+            Action::GotoLastRow
+        );
     }
 
     #[test]
     fn dd_deletes_row() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('d')), &app), Action::Noop);
-        assert_eq!(state.handle_key(key(KeyCode::Char('d')), &app), Action::DeleteRow(0));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('d')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('d')), &app),
+            Action::DeleteRow(0)
+        );
     }
 
     #[test]
     fn yy_yanks_row() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('y')), &app), Action::Noop);
-        assert_eq!(state.handle_key(key(KeyCode::Char('y')), &app), Action::YankRow(0));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('y')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('y')), &app),
+            Action::YankRow(0)
+        );
     }
 
     #[test]
     fn i_enters_insert_mode() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('i')), &app), Action::ChangeMode(Mode::Insert));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('i')), &app),
+            Action::ChangeMode(Mode::Insert)
+        );
     }
 
     #[test]
     fn colon_enters_command_mode() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char(':')), &app), Action::ChangeMode(Mode::Command));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char(':')), &app),
+            Action::ChangeMode(Mode::Command)
+        );
     }
 
     #[test]
     fn x_clears_cell() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(key(KeyCode::Char('x')), &app), Action::ClearCell((0, 0)));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('x')), &app),
+            Action::ClearCell((0, 0))
+        );
     }
 
     #[test]

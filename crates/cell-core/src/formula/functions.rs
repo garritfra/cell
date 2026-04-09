@@ -63,7 +63,11 @@ pub fn fn_if(args: &[CellValue]) -> CellValue {
         CellValue::Bool(true) => args[1].clone(),
         CellValue::Bool(false) => args[2].clone(),
         CellValue::Number(n) => {
-            if *n != 0.0 { args[1].clone() } else { args[2].clone() }
+            if *n != 0.0 {
+                args[1].clone()
+            } else {
+                args[2].clone()
+            }
         }
         CellValue::Error(e) => CellValue::Error(e.clone()),
         _ => CellValue::Error(CellError::Value),

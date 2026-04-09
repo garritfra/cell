@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::model::{CellPos, CellValue, CellError, Sheet};
 use crate::formula::ast::*;
-use crate::formula::parser;
 use crate::formula::eval;
+use crate::formula::parser;
+use crate::model::{CellError, CellPos, CellValue, Sheet};
 
 pub struct DepGraph {
     pub dependents: HashMap<CellPos, HashSet<CellPos>>,
@@ -105,7 +105,9 @@ pub fn mark_dirty(sheet: &mut Sheet, deps: &DepGraph, pos: CellPos) {
 }
 
 pub fn recalculate(sheet: &mut Sheet, deps: &DepGraph) {
-    let formula_cells: Vec<CellPos> = sheet.cells.iter()
+    let formula_cells: Vec<CellPos> = sheet
+        .cells
+        .iter()
         .filter(|(_, cell)| cell.raw.starts_with('='))
         .map(|(pos, _)| *pos)
         .collect();
@@ -114,13 +116,16 @@ pub fn recalculate(sheet: &mut Sheet, deps: &DepGraph) {
 
     let mut in_degree: HashMap<CellPos, usize> = HashMap::new();
     for &cell in &formula_cells {
-        let count = deps.dependencies.get(&cell)
+        let count = deps
+            .dependencies
+            .get(&cell)
             .map(|d| d.iter().filter(|p| formula_set.contains(p)).count())
             .unwrap_or(0);
         in_degree.insert(cell, count);
     }
 
-    let mut queue: VecDeque<CellPos> = in_degree.iter()
+    let mut queue: VecDeque<CellPos> = in_degree
+        .iter()
         .filter(|(_, &deg)| deg == 0)
         .map(|(&pos, _)| pos)
         .collect();
@@ -168,7 +173,7 @@ pub fn recalculate(sheet: &mut Sheet, deps: &DepGraph) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Sheet, CellValue};
+    use crate::model::{CellValue, Sheet};
 
     #[test]
     fn extract_deps_cell_ref() {
@@ -195,7 +200,10 @@ mod tests {
         sheet.set_cell((0, 0), "10");
         set_formula(&mut sheet, &mut deps, (0, 1), "=A1+5");
         recalculate(&mut sheet, &deps);
-        assert_eq!(sheet.get_cell((0, 1)).unwrap().value, CellValue::Number(15.0));
+        assert_eq!(
+            sheet.get_cell((0, 1)).unwrap().value,
+            CellValue::Number(15.0)
+        );
     }
 
     #[test]
@@ -206,8 +214,14 @@ mod tests {
         set_formula(&mut sheet, &mut deps, (0, 1), "=A1*2");
         set_formula(&mut sheet, &mut deps, (0, 2), "=B1+1");
         recalculate(&mut sheet, &deps);
-        assert_eq!(sheet.get_cell((0, 1)).unwrap().value, CellValue::Number(20.0));
-        assert_eq!(sheet.get_cell((0, 2)).unwrap().value, CellValue::Number(21.0));
+        assert_eq!(
+            sheet.get_cell((0, 1)).unwrap().value,
+            CellValue::Number(20.0)
+        );
+        assert_eq!(
+            sheet.get_cell((0, 2)).unwrap().value,
+            CellValue::Number(21.0)
+        );
     }
 
     #[test]
@@ -217,8 +231,14 @@ mod tests {
         set_formula(&mut sheet, &mut deps, (0, 0), "=B1");
         set_formula(&mut sheet, &mut deps, (0, 1), "=A1");
         recalculate(&mut sheet, &deps);
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Error(CellError::Circ));
-        assert_eq!(sheet.get_cell((0, 1)).unwrap().value, CellValue::Error(CellError::Circ));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Error(CellError::Circ)
+        );
+        assert_eq!(
+            sheet.get_cell((0, 1)).unwrap().value,
+            CellValue::Error(CellError::Circ)
+        );
     }
 
     #[test]
@@ -228,12 +248,18 @@ mod tests {
         sheet.set_cell((0, 0), "10");
         set_formula(&mut sheet, &mut deps, (0, 1), "=A1+5");
         recalculate(&mut sheet, &deps);
-        assert_eq!(sheet.get_cell((0, 1)).unwrap().value, CellValue::Number(15.0));
+        assert_eq!(
+            sheet.get_cell((0, 1)).unwrap().value,
+            CellValue::Number(15.0)
+        );
 
         sheet.set_cell((0, 0), "20");
         mark_dirty(&mut sheet, &deps, (0, 0));
         recalculate(&mut sheet, &deps);
-        assert_eq!(sheet.get_cell((0, 1)).unwrap().value, CellValue::Number(25.0));
+        assert_eq!(
+            sheet.get_cell((0, 1)).unwrap().value,
+            CellValue::Number(25.0)
+        );
     }
 
     #[test]
@@ -242,6 +268,9 @@ mod tests {
         let mut deps = DepGraph::new();
         set_formula(&mut sheet, &mut deps, (0, 0), "=A1+1");
         recalculate(&mut sheet, &deps);
-        assert_eq!(sheet.get_cell((0, 0)).unwrap().value, CellValue::Error(CellError::Circ));
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Error(CellError::Circ)
+        );
     }
 }

@@ -9,7 +9,12 @@ pub struct Viewport {
 
 impl Viewport {
     pub fn new() -> Self {
-        Viewport { row_offset: 0, col_offset: 0, visible_rows: 20, visible_cols: 10 }
+        Viewport {
+            row_offset: 0,
+            col_offset: 0,
+            visible_rows: 20,
+            visible_cols: 10,
+        }
     }
 
     pub fn ensure_visible(&mut self, cursor: CellPos) {

@@ -1,10 +1,10 @@
+use cell_core::model::{col_index_to_label, CellPos};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Style},
     widgets::Widget,
 };
-use cell_core::model::{col_index_to_label, CellPos};
 
 pub struct FormulaBar<'a> {
     pub cursor: CellPos,
@@ -16,7 +16,11 @@ pub struct FormulaBar<'a> {
 impl<'a> FormulaBar<'a> {
     /// Returns the x offset where content text begins (address width + separator).
     pub fn content_x(&self) -> u16 {
-        let addr = format!(" {}{} ", col_index_to_label(self.cursor.1), self.cursor.0 + 1);
+        let addr = format!(
+            " {}{} ",
+            col_index_to_label(self.cursor.1),
+            self.cursor.0 + 1
+        );
         let sep = " │ ";
         addr.len() as u16 + sep.len() as u16
     }
@@ -24,8 +28,14 @@ impl<'a> FormulaBar<'a> {
 
 impl<'a> Widget for FormulaBar<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        if area.height == 0 { return; }
-        let addr = format!(" {}{} ", col_index_to_label(self.cursor.1), self.cursor.0 + 1);
+        if area.height == 0 {
+            return;
+        }
+        let addr = format!(
+            " {}{} ",
+            col_index_to_label(self.cursor.1),
+            self.cursor.0 + 1
+        );
         let addr_width = addr.len() as u16;
         let addr_style = Style::default().fg(Color::Black).bg(Color::White);
         buf.set_string(area.x, area.y, &addr, addr_style);

@@ -2,7 +2,11 @@ use cell_core::model::CellPos;
 
 #[derive(Debug, Clone)]
 pub enum UndoEntry {
-    CellEdit { pos: CellPos, old_raw: String, new_raw: String },
+    CellEdit {
+        pos: CellPos,
+        old_raw: String,
+        new_raw: String,
+    },
 }
 
 pub struct UndoStack {
@@ -11,8 +15,16 @@ pub struct UndoStack {
 }
 
 impl UndoStack {
-    pub fn new() -> Self { UndoStack { undo: Vec::new(), redo: Vec::new() } }
-    pub fn push(&mut self, entry: UndoEntry) { self.undo.push(entry); self.redo.clear(); }
+    pub fn new() -> Self {
+        UndoStack {
+            undo: Vec::new(),
+            redo: Vec::new(),
+        }
+    }
+    pub fn push(&mut self, entry: UndoEntry) {
+        self.undo.push(entry);
+        self.redo.clear();
+    }
     pub fn undo(&mut self) -> Option<UndoEntry> {
         let entry = self.undo.pop()?;
         self.redo.push(entry.clone());

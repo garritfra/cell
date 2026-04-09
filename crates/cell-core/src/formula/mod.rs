@@ -1,6 +1,6 @@
-pub mod token;
 pub mod ast;
-pub mod parser;
+pub mod deps;
 pub mod eval;
 pub mod functions;
-pub mod deps;
+pub mod parser;
+pub mod token;

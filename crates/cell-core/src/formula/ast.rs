@@ -13,7 +13,12 @@ impl CellRef {
     pub fn from_display(col: &str, row: &str, abs_col: bool, abs_row: bool) -> Option<Self> {
         let col_idx = col_label_to_index(col)?;
         let row_idx: usize = row.parse::<usize>().ok()?.checked_sub(1)?;
-        Some(CellRef { col: col_idx, row: row_idx, abs_col, abs_row })
+        Some(CellRef {
+            col: col_idx,
+            row: row_idx,
+            abs_col,
+            abs_row,
+        })
     }
 }
 
@@ -37,8 +42,18 @@ pub enum Expr {
     Text(String),
     Bool(bool),
     CellRef(CellRef),
-    Range { start: CellRef, end: CellRef },
-    BinaryOp { op: Op, left: Box<Expr>, right: Box<Expr> },
+    Range {
+        start: CellRef,
+        end: CellRef,
+    },
+    BinaryOp {
+        op: Op,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
     UnaryNeg(Box<Expr>),
-    FnCall { name: String, args: Vec<Expr> },
+    FnCall {
+        name: String,
+        args: Vec<Expr>,
+    },
 }
