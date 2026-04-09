@@ -53,6 +53,7 @@ pub enum Action {
     PrevNonEmpty,
     DeleteRow(usize),
     YankRow(usize),
+    ShowHelp(Option<String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,4 +63,5 @@ pub enum Mode {
     Visual,
     VisualBlock,
     Command,
+    Help,
 }

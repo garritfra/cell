@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use cell_core::model::{Sheet, CellPos};
 use cell_core::formula::deps::{DepGraph, set_formula, mark_dirty, recalculate};
+use cell_core::help::HelpRegistry;
 use crate::action::{Action, Mode, Direction};
 use crate::viewport::Viewport;
 use crate::undo::{UndoEntry, UndoStack};
@@ -27,6 +28,9 @@ pub struct App {
     pub dirty: bool,
     pub should_quit: bool,
     pub insert_buffer: String,
+    pub help_scroll: usize,
+    pub help_topic: Option<String>,
+    pub help_registry: HelpRegistry,
 }
 
 impl App {
@@ -47,6 +51,9 @@ impl App {
             dirty: false,
             should_quit: false,
             insert_buffer: String::new(),
+            help_scroll: 0,
+            help_topic: None,
+            help_registry: HelpRegistry::new(),
         }
     }
 
@@ -281,6 +288,24 @@ impl App {
                             self.viewport.ensure_visible(self.cursor);
                             return;
                         }
+                    }
+                }
+            }
+            Action::ShowHelp(topic) => {
+                match topic {
+                    Some(ref tag) => {
+                        if self.help_registry.find(tag).is_some() {
+                            self.help_topic = topic;
+                            self.help_scroll = 0;
+                            self.mode = Mode::Help;
+                        } else {
+                            self.status_message = Some(format!("No help for '{}'", tag));
+                        }
+                    }
+                    None => {
+                        self.help_topic = None;
+                        self.help_scroll = 0;
+                        self.mode = Mode::Help;
                     }
                 }
             }

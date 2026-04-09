@@ -30,6 +30,7 @@ impl<'a> Widget for StatusBar<'a> {
             Mode::Visual => " VISUAL ",
             Mode::VisualBlock => " V-BLOCK ",
             Mode::Command => " COMMAND ",
+            Mode::Help => " HELP ",
         };
         let mode_style = Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD);
         buf.set_string(area.x, area.y, mode_str, mode_style);

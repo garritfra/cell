@@ -154,6 +154,12 @@ fn run_loop(
                             Action::ChangeMode(Mode::Normal)
                         }
                     }
+                    Mode::Help => {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Char('q') => Action::ChangeMode(Mode::Normal),
+                            _ => Action::Noop,
+                        }
+                    }
                     Mode::Command => {
                         let cmd_action = handle_command_key(key, &app.command_line);
                         match cmd_action {
