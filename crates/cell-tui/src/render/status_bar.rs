@@ -30,6 +30,7 @@ impl<'a> Widget for StatusBar<'a> {
             Mode::Visual => " VISUAL ",
             Mode::VisualBlock => " V-BLOCK ",
             Mode::Command => " COMMAND ",
+            Mode::Help => " HELP ",
         };
         let mode_bg = match self.mode {
             Mode::Normal => Color::Rgb(68, 68, 68),       // dark gray — Vim default

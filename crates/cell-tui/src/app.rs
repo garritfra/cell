@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use cell_core::model::{Sheet, CellPos};
 use cell_core::formula::deps::{DepGraph, set_formula, mark_dirty, recalculate};
+use cell_core::help::HelpRegistry;
 use crate::action::{Action, Mode, Direction};
 use crate::viewport::Viewport;
 use crate::undo::{UndoEntry, UndoStack};
@@ -27,6 +28,9 @@ pub struct App {
     pub dirty: bool,
     pub should_quit: bool,
     pub insert_buffer: String,
+    pub help_scroll: usize,
+    pub help_topic: Option<String>,
+    pub help_registry: HelpRegistry,
 }
 
 impl App {
@@ -47,6 +51,9 @@ impl App {
             dirty: false,
             should_quit: false,
             insert_buffer: String::new(),
+            help_scroll: 0,
+            help_topic: None,
+            help_registry: HelpRegistry::new(),
         }
     }
 
@@ -284,6 +291,24 @@ impl App {
                     }
                 }
             }
+            Action::ShowHelp(topic) => {
+                match topic {
+                    Some(ref tag) => {
+                        if self.help_registry.find(tag).is_some() {
+                            self.help_topic = topic;
+                            self.help_scroll = 0;
+                            self.mode = Mode::Help;
+                        } else {
+                            self.status_message = Some(format!("No help for '{}'", tag));
+                        }
+                    }
+                    None => {
+                        self.help_topic = None;
+                        self.help_scroll = 0;
+                        self.mode = Mode::Help;
+                    }
+                }
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -375,5 +400,46 @@ impl App {
                 recalculate(&mut self.sheet, &self.deps);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::action::Action;
+
+    #[test]
+    fn show_help_toc_sets_help_mode() {
+        let mut app = App::new();
+        app.process_action(Action::ShowHelp(None));
+        assert_eq!(app.mode, Mode::Help);
+        assert_eq!(app.help_topic, None);
+        assert_eq!(app.help_scroll, 0);
+    }
+
+    #[test]
+    fn show_help_valid_topic() {
+        let mut app = App::new();
+        app.process_action(Action::ShowHelp(Some("dd".into())));
+        assert_eq!(app.mode, Mode::Help);
+        assert_eq!(app.help_topic, Some("dd".into()));
+    }
+
+    #[test]
+    fn show_help_invalid_topic_stays_normal() {
+        let mut app = App::new();
+        app.mode = Mode::Normal;
+        app.process_action(Action::ShowHelp(Some("nonexistent".into())));
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.status_message, Some("No help for 'nonexistent'".into()));
+    }
+
+    #[test]
+    fn help_mode_back_to_normal() {
+        let mut app = App::new();
+        app.process_action(Action::ShowHelp(None));
+        assert_eq!(app.mode, Mode::Help);
+        app.process_action(Action::ChangeMode(Mode::Normal));
+        assert_eq!(app.mode, Mode::Normal);
     }
 }

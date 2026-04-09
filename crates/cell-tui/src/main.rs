@@ -83,12 +83,14 @@ fn run_loop(
     use mode::insert::{handle_insert_key, handle_insert_char, InsertAction};
     use mode::command::{handle_command_key, parse_command, CommandAction};
     use mode::visual::VisualState;
+    use mode::help::HelpState;
 
     let mut normal_state = NormalState::new();
     let mut visual_state: Option<VisualState> = None;
     let mut insert_cursor: usize = 0;
     let mut search_mode = false;
     let mut wq_pending = false;
+    let mut help_state = HelpState::new();
 
     loop {
         let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
@@ -154,6 +156,7 @@ fn run_loop(
                             Action::ChangeMode(Mode::Normal)
                         }
                     }
+                    Mode::Help => help_state.handle_key(key, app, grid_height),
                     Mode::Command => {
                         let cmd_action = handle_command_key(key, &app.command_line);
                         match cmd_action {
