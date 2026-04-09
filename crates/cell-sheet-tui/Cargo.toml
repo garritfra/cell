@@ -13,7 +13,7 @@ name = "cell"
 path = "src/main.rs"
 
 [dependencies]
-cell-sheet-core = { path = "../cell-sheet-core" }
+cell-sheet-core.workspace = true
 ratatui = "0.30"
 crossterm = "0.29"
 clap = { version = "4", features = ["derive"] }
