@@ -2,6 +2,7 @@ pub mod grid;
 pub mod formula_bar;
 pub mod status_bar;
 pub mod command_line;
+pub mod help;
 
 use ratatui::{
     Frame,
@@ -13,8 +14,18 @@ use grid::Grid;
 use formula_bar::FormulaBar;
 use status_bar::StatusBar;
 use command_line::CommandLine;
+use help::HelpView;
 
 pub fn render(frame: &mut Frame, app: &App) {
+    if app.mode == Mode::Help {
+        frame.render_widget(HelpView {
+            registry: &app.help_registry,
+            topic: app.help_topic.as_deref(),
+            scroll: app.help_scroll,
+        }, frame.area());
+        return;
+    }
+
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
