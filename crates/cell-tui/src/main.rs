@@ -48,6 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    use cell_core::formula::deps::{set_formula, recalculate};
+
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
         "csv" => {
@@ -72,6 +74,17 @@ fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::e
         }
     }
     app.file_path = Some(path.to_path_buf());
+
+    // Register formulas in the dependency graph and evaluate them
+    let formula_cells: Vec<_> = app.sheet.cells.iter()
+        .filter(|(_, cell)| cell.raw.starts_with('='))
+        .map(|(pos, cell)| (*pos, cell.raw.clone()))
+        .collect();
+    for (pos, raw) in formula_cells {
+        set_formula(&mut app.sheet, &mut app.deps, pos, &raw);
+    }
+    recalculate(&mut app.sheet, &app.deps);
+
     Ok(())
 }
 
