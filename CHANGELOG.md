@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.5
+
+### Fixed
+
+- Add README to crates.io package pages
+- Bump GitHub Actions to Node.js 24 compatible versions
+- Fix crates.io publish requiring version on workspace dependency
+
 ## 0.1.2
 
 ### Changed

@@ -3,10 +3,10 @@ members = ["crates/cell-sheet-core", "crates/cell-sheet-tui"]
 resolver = "2"
 
 [workspace.dependencies]
-cell-sheet-core = { path = "crates/cell-sheet-core", version = "0.1.3" }
+cell-sheet-core = { path = "crates/cell-sheet-core", version = "0.1.5" }
 
 [workspace.package]
-version = "0.1.3"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 readme = "../../README.md"
