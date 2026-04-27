@@ -7,6 +7,11 @@ pub enum UndoEntry {
         old_raw: String,
         new_raw: String,
     },
+    /// A group of cell edits applied atomically (e.g. `dd` deleting a row).
+    /// Each tuple is `(pos, old_raw, new_raw)`.
+    MultiCellEdit {
+        changes: Vec<(CellPos, String, String)>,
+    },
 }
 
 pub struct UndoStack {
