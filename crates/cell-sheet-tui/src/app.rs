@@ -35,7 +35,11 @@ pub struct App {
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
     pub marks: HashMap<char, CellPos>,
+    pub jump_list: Vec<CellPos>,
+    pub jump_idx: usize,
 }
+
+const JUMP_LIST_CAP: usize = 100;
 
 impl App {
     pub fn new() -> Self {
@@ -59,7 +63,24 @@ impl App {
             help_topic: None,
             help_registry: HelpRegistry::new(),
             marks: HashMap::new(),
+            jump_list: Vec::new(),
+            jump_idx: 0,
         }
+    }
+
+    /// Push the current cursor onto the jump list as a "from" position
+    /// before a big jump. Following vim, recording mid-stack truncates the
+    /// forward history. Capped at `JUMP_LIST_CAP` entries.
+    pub fn record_jump(&mut self) {
+        if self.jump_idx < self.jump_list.len() {
+            self.jump_list.truncate(self.jump_idx);
+        }
+        self.jump_list.push(self.cursor);
+        if self.jump_list.len() > JUMP_LIST_CAP {
+            let overflow = self.jump_list.len() - JUMP_LIST_CAP;
+            self.jump_list.drain(0..overflow);
+        }
+        self.jump_idx = self.jump_list.len();
     }
 
     pub fn has_formulas(&self) -> bool {
@@ -80,6 +101,7 @@ impl App {
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::MoveCursorTo(pos) => {
+                self.record_jump();
                 self.cursor = pos;
                 self.viewport.ensure_visible(self.cursor);
             }
@@ -179,10 +201,12 @@ impl App {
                 self.mode = Mode::Insert;
             }
             Action::GotoFirstRow => {
+                self.record_jump();
                 self.cursor = (0, self.cursor.1);
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::GotoLastRow => {
+                self.record_jump();
                 let last = if self.sheet.row_count > 0 {
                     self.sheet.row_count - 1
                 } else {
@@ -257,16 +281,19 @@ impl App {
                 }
             }
             Action::Search { pattern, direction } => {
+                self.record_jump();
                 self.search_pattern = Some(pattern.clone());
                 self.find_next(direction == crate::action::SearchDirection::Forward);
             }
             Action::SearchNext => {
                 if self.search_pattern.is_some() {
+                    self.record_jump();
                     self.find_next(true);
                 }
             }
             Action::SearchPrev => {
                 if self.search_pattern.is_some() {
+                    self.record_jump();
                     self.find_next(false);
                 }
             }
@@ -515,6 +542,7 @@ impl App {
             }
             Action::JumpToMark { name, line_wise } => match self.marks.get(&name).copied() {
                 Some(pos) => {
+                    self.record_jump();
                     self.cursor = if line_wise { (pos.0, 0) } else { pos };
                     self.viewport.ensure_visible(self.cursor);
                 }
@@ -522,6 +550,24 @@ impl App {
                     self.status_message = Some(format!("E20: Mark not set: {}", name));
                 }
             },
+            Action::JumpBack => {
+                if self.jump_idx == self.jump_list.len() && !self.jump_list.is_empty() {
+                    let cur = self.cursor;
+                    self.jump_list.push(cur);
+                }
+                if self.jump_idx > 0 {
+                    self.jump_idx -= 1;
+                    self.cursor = self.jump_list[self.jump_idx];
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::JumpForward => {
+                if self.jump_idx + 1 < self.jump_list.len() {
+                    self.jump_idx += 1;
+                    self.cursor = self.jump_list[self.jump_idx];
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -1100,6 +1146,79 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("Mark not set"));
+    }
+
+    // ── Jump list (#32) ─────────────────────────────────────────────────────
+
+    #[test]
+    fn ctrl_o_returns_to_position_before_jump() {
+        let mut app = App::new();
+        app.sheet.row_count = 100;
+        app.cursor = (0, 0);
+        app.process_action(Action::GotoLastRow);
+        assert_eq!(app.cursor, (99, 0));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn ctrl_i_returns_to_jumped_position() {
+        let mut app = App::new();
+        app.sheet.row_count = 100;
+        app.cursor = (0, 0);
+        app.process_action(Action::GotoLastRow);
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+        app.process_action(Action::JumpForward);
+        assert_eq!(app.cursor, (99, 0));
+    }
+
+    #[test]
+    fn jump_list_capped_at_100_entries() {
+        let mut app = App::new();
+        app.sheet.row_count = 200;
+        for r in 0..150 {
+            app.cursor = (r, 0);
+            app.process_action(Action::GotoLastRow);
+        }
+        assert!(app.jump_list.len() <= 100);
+    }
+
+    #[test]
+    fn jump_back_with_empty_list_is_noop() {
+        let mut app = App::new();
+        app.cursor = (5, 0);
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn search_records_jump() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((5, 0), "foo".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::Search {
+            pattern: "foo".into(),
+            direction: crate::action::SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (5, 0));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn marks_jump_records_jump() {
+        let mut app = App::new();
+        app.cursor = (5, 5);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (5, 5));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
     }
 
     #[test]

@@ -23,6 +23,7 @@ impl NormalState {
                 KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
                 KeyCode::Char('e') => Action::ScrollLineDown,
                 KeyCode::Char('y') => Action::ScrollLineUp,
+                KeyCode::Char('o') => Action::JumpBack,
                 _ => Action::Noop,
             };
         }
@@ -103,6 +104,7 @@ impl NormalState {
             KeyCode::Char('/') => Action::ChangeMode(Mode::Command),
             KeyCode::Char('n') => Action::SearchNext,
             KeyCode::Char('N') => Action::SearchPrev,
+            KeyCode::Tab => Action::JumpForward,
             KeyCode::Enter => Action::ChangeMode(Mode::Insert),
             _ => Action::Noop,
         }
@@ -349,6 +351,23 @@ mod tests {
                 name: 'a',
                 line_wise: false
             }
+        );
+    }
+
+    #[test]
+    fn ctrl_o_jumps_back() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(state.handle_key(ctrl_key('o'), &app), Action::JumpBack);
+    }
+
+    #[test]
+    fn tab_jumps_forward() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Tab), &app),
+            Action::JumpForward
         );
     }
 

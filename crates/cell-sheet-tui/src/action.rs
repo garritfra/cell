@@ -89,6 +89,8 @@ pub enum Action {
         name: char,
         line_wise: bool,
     },
+    JumpBack,
+    JumpForward,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
