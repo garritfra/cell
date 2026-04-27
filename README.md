@@ -114,9 +114,41 @@ Formula compliance with the ODF (OpenDocument Formula) spec is tracked and will 
 ## File Formats
 
 - **CSV/TSV** -- Opens and saves standard comma/tab-separated files. Formulas are flattened to their computed values on CSV export.
-- `**.cell`** -- Native format that preserves formulas. Plain text, human-readable, inspired by [sc-im](https://github.com/andmarti1992/sc-im).
+- `**.cell`** -- Native format that preserves formulas. Plain text, human-readable, inspired by [sc-im](https://github.com/andmarti1424/sc-im).
 
 When saving a CSV that contains formulas, cell warns you and suggests saving as `.cell` instead. Use `:w!` to force a CSV save.
+
+## Comparison with sc-im
+
+[sc-im](https://github.com/andmarti1424/sc-im) is a battle-tested terminal spreadsheet built on the classic `sc` (Spreadsheet Calculator, 1981). It inspired cell's native `.cell` format. Here's how the two tools compare:
+
+| | cell | sc-im |
+| --- | --- | --- |
+| **Language / TUI** | Rust + ratatui | C + ncurses |
+| **Editing model** | True Vim modal editing (`i` → Insert, `ESC` → Normal) | Vim-inspired navigation; `=` to enter a value, `e`/`E` to edit |
+| **Formula syntax** | Excel-compatible (`=SUM(A1:A10)`, `=IF(...)`) | `@`-prefix style (`@sum(A1:A10)`, `@avg(...)`) |
+| **Built-in functions** | SUM, AVERAGE, COUNT, MIN, MAX, IF | Extensive (@sum, @avg, @min, @max, @abs, @sqrt, ...) |
+| **File formats** | CSV, TSV, `.cell` | CSV, TSV, XLSX/XLS/ODS import, Markdown export, `.sc` |
+| **Cell formatting** | not yet | Bold, italic, underline, RGB colors |
+| **Scripting** | not yet | Lua scripting, external C modules, non-interactive mode |
+| **Charting** | not yet | GNUPlot integration |
+| **Windows support** | ✓ (pre-built binaries) | Limited |
+| **Clipboard** | Built-in | Requires tmux / xclip / pbpaste |
+| **Config file** | not yet | `~/.config/sc-im/scimrc` |
+
+### Choose cell if…
+
+- You want editing that works exactly like Vim (`i` to insert, `ESC` to return, `/` to search)
+- You prefer Excel-compatible formula syntax (`=SUM`, `=IF`, `=AVERAGE`)
+- You need a working binary on Windows without extra setup
+- You value a modern, memory-safe codebase with minimal dependencies
+
+### Choose sc-im if…
+
+- You need XLSX, ODS, or Markdown support right now
+- You need Lua scripting, GNUPlot charting, or non-interactive batch mode right now
+- You need cell-level formatting (colors, bold, italic) right now
+- You want a highly configurable, feature-rich tool with decades of history behind it
 
 ## Architecture
 
