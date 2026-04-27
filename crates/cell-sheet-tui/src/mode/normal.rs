@@ -310,7 +310,10 @@ mod tests {
     fn ctrl_e_scrolls_line_down() {
         let app = App::new();
         let mut state = NormalState::new();
-        assert_eq!(state.handle_key(ctrl_key('e'), &app), Action::ScrollLineDown);
+        assert_eq!(
+            state.handle_key(ctrl_key('e'), &app),
+            Action::ScrollLineDown
+        );
     }
 
     #[test]

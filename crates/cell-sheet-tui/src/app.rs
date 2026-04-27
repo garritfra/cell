@@ -543,8 +543,8 @@ impl App {
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::CursorToViewportBottom => {
-                let bottom = (self.viewport.row_offset + self.viewport.visible_rows)
-                    .saturating_sub(1);
+                let bottom =
+                    (self.viewport.row_offset + self.viewport.visible_rows).saturating_sub(1);
                 self.cursor = (bottom, self.cursor.1);
                 self.viewport.ensure_visible(self.cursor);
             }
@@ -1449,9 +1449,9 @@ mod tests {
         let mut app = App::new();
         app.cursor = (5, 3);
         app.process_action(Action::SetMark('A'));
-        assert!(app.marks.get(&'A').is_none());
+        assert!(!app.marks.contains_key(&'A'));
         app.process_action(Action::SetMark('1'));
-        assert!(app.marks.get(&'1').is_none());
+        assert!(!app.marks.contains_key(&'1'));
     }
 
     #[test]
