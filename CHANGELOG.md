@@ -51,12 +51,12 @@
 - Non-interactive CLI mode for scripting against `.cell`, CSV, and TSV files
   without launching the TUI: `--read <ref>` prints a cell or range, `--eval <expr>`
   evaluates a formula in-place without saving, and repeatable `--write <ref> <value>`
-  flags batch into a single save (#6)
+  flags batch into a single save ([#19](https://github.com/garritfra/cell/pull/19))
 
 ### Fixed
 
-- Visual-mode `d` (clear range) is now undoable with `u` and redoable with `Ctrl-R`, including formula preservation (#13)
-- `p` and `P` paste operations are now undoable and redoable for cell, row, and block registers, restoring any prior content at the destination (#13)
+- Visual-mode `d` (clear range) is now undoable with `u` and redoable with `Ctrl-R`, including formula preservation ([#16](https://github.com/garritfra/cell/pull/16))
+- `p` and `P` paste operations are now undoable and redoable for cell, row, and block registers, restoring any prior content at the destination ([#16](https://github.com/garritfra/cell/pull/16))
 - Pasted formulas are now evaluated immediately instead of showing a default value until the next edit
 - Undo, redo, and visual-range clears now keep the formula dependency graph consistent when overwriting or clearing formula cells
 
@@ -64,7 +64,7 @@
 
 ### Fixed
 
-- `dd` (delete row) is now undoable with `u`, matching Vim's behavior (#5)
+- `dd` (delete row) is now undoable with `u`, matching Vim's behavior ([#12](https://github.com/garritfra/cell/pull/12))
 
 ## 0.1.5
 
