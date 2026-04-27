@@ -121,6 +121,27 @@ pub enum Action {
     DeleteRow(usize),
     YankRow(usize),
     ShowHelp(Option<String>),
+    ScrollCursorTop,
+    ScrollCursorCenter,
+    ScrollCursorBottom,
+    CursorToViewportTop,
+    CursorToViewportMiddle,
+    CursorToViewportBottom,
+    ScrollLineDown,
+    ScrollLineUp,
+    SetMark(char),
+    JumpToMark {
+        name: char,
+        line_wise: bool,
+    },
+    JumpBack,
+    JumpForward,
+    BlockJumpDown,
+    BlockJumpUp,
+    SearchCellValue {
+        backward: bool,
+    },
+    ReselectLastVisual,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

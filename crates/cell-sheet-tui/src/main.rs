@@ -234,6 +234,9 @@ fn run_loop(
                                     | Action::ChangeRange { .. }
                             );
                             if exits {
+                                let anchor = vs.anchor;
+                                let kind = vs.kind;
+                                app.record_last_visual(anchor, kind);
                                 visual_state = None;
                                 app.mode = Mode::Normal;
                             }
@@ -321,6 +324,19 @@ fn run_loop(
                 if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
                     insert_cursor = 0;
                 }
+                if matches!(&action, Action::ReselectLastVisual) {
+                    if let Some(lv) = app.last_visual {
+                        visual_state = Some(VisualState::new(lv.anchor, lv.kind));
+                        app.cursor = lv.cursor;
+                        app.mode = match lv.kind {
+                            VisualKind::Character => Mode::Visual,
+                            VisualKind::Line => Mode::VisualLine,
+                            VisualKind::Block => Mode::VisualBlock,
+                        };
+                        app.viewport.ensure_visible(app.cursor);
+                    }
+                }
+
                 app.process_action(action);
 
                 if wq_pending && !app.dirty {

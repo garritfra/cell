@@ -1,10 +1,12 @@
 use crate::action::{Action, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
+use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
 use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
 use cell_sheet_core::help::HelpRegistry;
 use cell_sheet_core::model::{CellPos, Sheet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,6 +43,19 @@ pub struct App {
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
+    pub marks: HashMap<char, CellPos>,
+    pub jump_list: Vec<CellPos>,
+    pub jump_idx: usize,
+    pub last_visual: Option<LastVisual>,
+}
+
+const JUMP_LIST_CAP: usize = 100;
+
+#[derive(Debug, Clone, Copy)]
+pub struct LastVisual {
+    pub anchor: CellPos,
+    pub cursor: CellPos,
+    pub kind: VisualKind,
 }
 
 impl App {
@@ -67,7 +82,35 @@ impl App {
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),
+            marks: HashMap::new(),
+            jump_list: Vec::new(),
+            jump_idx: 0,
+            last_visual: None,
         }
+    }
+
+    /// Snapshot the current visual selection so a later `gv` can re-enter it.
+    pub fn record_last_visual(&mut self, anchor: CellPos, kind: VisualKind) {
+        self.last_visual = Some(LastVisual {
+            anchor,
+            cursor: self.cursor,
+            kind,
+        });
+    }
+
+    /// Push the current cursor onto the jump list as a "from" position
+    /// before a big jump. Following vim, recording mid-stack truncates the
+    /// forward history. Capped at `JUMP_LIST_CAP` entries.
+    pub fn record_jump(&mut self) {
+        if self.jump_idx < self.jump_list.len() {
+            self.jump_list.truncate(self.jump_idx);
+        }
+        self.jump_list.push(self.cursor);
+        if self.jump_list.len() > JUMP_LIST_CAP {
+            let overflow = self.jump_list.len() - JUMP_LIST_CAP;
+            self.jump_list.drain(0..overflow);
+        }
+        self.jump_idx = self.jump_list.len();
     }
 
     pub fn has_formulas(&self) -> bool {
@@ -88,6 +131,7 @@ impl App {
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::MoveCursorTo(pos) => {
+                self.record_jump();
                 self.cursor = pos;
                 self.viewport.ensure_visible(self.cursor);
             }
@@ -191,10 +235,12 @@ impl App {
                 self.mode = Mode::Insert;
             }
             Action::GotoFirstRow => {
+                self.record_jump();
                 self.cursor = (0, self.cursor.1);
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::GotoLastRow => {
+                self.record_jump();
                 let last = if self.sheet.row_count > 0 {
                     self.sheet.row_count - 1
                 } else {
@@ -279,6 +325,7 @@ impl App {
                     }
                     return;
                 }
+                self.record_jump();
                 self.search_pattern = Some(pattern.clone());
                 let forward = direction == SearchDirection::Forward;
                 // If a prompt is open (origin set), commit at the incremental
@@ -348,11 +395,13 @@ impl App {
             }
             Action::SearchNext => {
                 if self.search_pattern.is_some() {
+                    self.record_jump();
                     self.find_next(true);
                 }
             }
             Action::SearchPrev => {
                 if self.search_pattern.is_some() {
+                    self.record_jump();
                     self.find_next(false);
                 }
             }
@@ -559,6 +608,109 @@ impl App {
                     self.mode = Mode::Help;
                 }
             },
+            Action::ScrollCursorTop => {
+                self.viewport.top_on(self.cursor.0);
+            }
+            Action::ScrollCursorCenter => {
+                self.viewport.center_on(self.cursor.0);
+            }
+            Action::ScrollCursorBottom => {
+                self.viewport.bottom_on(self.cursor.0);
+            }
+            Action::CursorToViewportTop => {
+                self.cursor = (self.viewport.row_offset, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::CursorToViewportMiddle => {
+                let mid = self
+                    .viewport
+                    .row_offset
+                    .saturating_add(self.viewport.visible_rows / 2);
+                let last_row = self.viewport.row_offset + self.viewport.visible_rows;
+                let target = mid.min(last_row.saturating_sub(1));
+                self.cursor = (target, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::CursorToViewportBottom => {
+                let bottom =
+                    (self.viewport.row_offset + self.viewport.visible_rows).saturating_sub(1);
+                self.cursor = (bottom, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::ScrollLineDown => {
+                self.viewport.row_offset = self.viewport.row_offset.saturating_add(1);
+            }
+            Action::ScrollLineUp => {
+                self.viewport.row_offset = self.viewport.row_offset.saturating_sub(1);
+            }
+            Action::SetMark(name) => {
+                if name.is_ascii_lowercase() {
+                    self.marks.insert(name, self.cursor);
+                }
+            }
+            Action::JumpToMark { name, line_wise } => match self.marks.get(&name).copied() {
+                Some(pos) => {
+                    self.record_jump();
+                    self.cursor = if line_wise { (pos.0, 0) } else { pos };
+                    self.viewport.ensure_visible(self.cursor);
+                }
+                None => {
+                    self.status_message = Some(format!("E20: Mark not set: {}", name));
+                }
+            },
+            Action::JumpBack => {
+                if self.jump_idx == self.jump_list.len() && !self.jump_list.is_empty() {
+                    let cur = self.cursor;
+                    self.jump_list.push(cur);
+                }
+                if self.jump_idx > 0 {
+                    self.jump_idx -= 1;
+                    self.cursor = self.jump_list[self.jump_idx];
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::JumpForward => {
+                if self.jump_idx + 1 < self.jump_list.len() {
+                    self.jump_idx += 1;
+                    self.cursor = self.jump_list[self.jump_idx];
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::BlockJumpDown => {
+                if let Some(row) = self.block_jump_down() {
+                    self.cursor = (row, self.cursor.1);
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::BlockJumpUp => {
+                if let Some(row) = self.block_jump_up() {
+                    self.cursor = (row, self.cursor.1);
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::ReselectLastVisual => {
+                // Re-entry into visual mode is orchestrated in main.rs because
+                // it owns the live `VisualState`. App only stores the snapshot.
+            }
+            Action::SearchCellValue { backward } => {
+                let pattern = self
+                    .sheet
+                    .get_cell(self.cursor)
+                    .map(|c| c.value.to_string());
+                if let Some(p) = pattern.filter(|s| !s.is_empty()) {
+                    let direction = if backward {
+                        crate::action::SearchDirection::Backward
+                    } else {
+                        crate::action::SearchDirection::Forward
+                    };
+                    self.process_action(Action::Search {
+                        pattern: p,
+                        direction,
+                    });
+                } else {
+                    self.status_message = Some("No string under cursor".into());
+                }
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -600,6 +752,50 @@ impl App {
             Err(e) => {
                 self.status_message = Some(format!("Error saving: {}", e));
             }
+        }
+    }
+
+    fn cell_is_non_empty(&self, row: usize, col: usize) -> bool {
+        self.sheet.get_cell((row, col)).is_some()
+    }
+
+    /// Spec: `}` from a non-empty cell jumps to the first empty row at-or-after
+    /// the current block's last non-empty row. From an empty cell, jumps to
+    /// the first non-empty row below. Returns `None` at the sheet boundary.
+    pub fn block_jump_down(&self) -> Option<usize> {
+        let (row, col) = self.cursor;
+        let n = self.sheet.row_count;
+        if row + 1 >= n {
+            return None;
+        }
+        let start_filled = self.cell_is_non_empty(row, col);
+        let mut r = row + 1;
+        while r < n && self.cell_is_non_empty(r, col) == start_filled {
+            r += 1;
+        }
+        if r < n {
+            Some(r)
+        } else {
+            None
+        }
+    }
+
+    /// Symmetric to `block_jump_down`.
+    pub fn block_jump_up(&self) -> Option<usize> {
+        let (row, col) = self.cursor;
+        if row == 0 {
+            return None;
+        }
+        let start_filled = self.cell_is_non_empty(row, col);
+        let mut r = row - 1;
+        loop {
+            if self.cell_is_non_empty(r, col) != start_filled {
+                return Some(r);
+            }
+            if r == 0 {
+                return None;
+            }
+            r -= 1;
         }
     }
 
@@ -1501,6 +1697,345 @@ mod tests {
             inclusive: true,
         });
         assert_eq!(app.cursor, (0, 1));
+    }
+
+    // ── Viewport navigation (#30) ───────────────────────────────────────────
+
+    #[test]
+    fn zt_scrolls_cursor_to_top() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (50, 0);
+        app.process_action(Action::ScrollCursorTop);
+        assert_eq!(app.viewport.row_offset, 50);
+        assert_eq!(app.cursor, (50, 0));
+    }
+
+    #[test]
+    fn zz_centers_cursor() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (50, 0);
+        app.process_action(Action::ScrollCursorCenter);
+        assert_eq!(app.viewport.row_offset, 45);
+    }
+
+    #[test]
+    fn zb_scrolls_cursor_to_bottom() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (50, 0);
+        app.process_action(Action::ScrollCursorBottom);
+        assert_eq!(app.viewport.row_offset, 41);
+    }
+
+    #[test]
+    fn capital_h_jumps_cursor_to_viewport_top() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 20;
+        app.cursor = (25, 3);
+        app.process_action(Action::CursorToViewportTop);
+        assert_eq!(app.cursor, (20, 3));
+    }
+
+    #[test]
+    fn capital_m_jumps_cursor_to_viewport_middle() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 20;
+        app.cursor = (20, 3);
+        app.process_action(Action::CursorToViewportMiddle);
+        assert_eq!(app.cursor, (25, 3));
+    }
+
+    #[test]
+    fn capital_l_jumps_cursor_to_viewport_bottom() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 20;
+        app.cursor = (20, 3);
+        app.process_action(Action::CursorToViewportBottom);
+        assert_eq!(app.cursor, (29, 3));
+    }
+
+    #[test]
+    fn ctrl_e_scrolls_viewport_without_moving_cursor() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (5, 0);
+        app.process_action(Action::ScrollLineDown);
+        assert_eq!(app.viewport.row_offset, 1);
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn ctrl_y_scrolls_up_clamped_at_zero() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 0;
+        app.process_action(Action::ScrollLineUp);
+        assert_eq!(app.viewport.row_offset, 0);
+    }
+
+    // ── Marks (#31) ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn set_mark_records_cursor_position() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('a'));
+        assert_eq!(app.marks.get(&'a'), Some(&(5, 3)));
+    }
+
+    #[test]
+    fn backtick_jump_returns_to_exact_cell() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (5, 3));
+    }
+
+    #[test]
+    fn apostrophe_jump_returns_to_marked_row_column_zero() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: true,
+        });
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn jump_to_unset_mark_is_noop_with_status() {
+        let mut app = App::new();
+        app.cursor = (1, 1);
+        app.process_action(Action::JumpToMark {
+            name: 'q',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (1, 1));
+        assert!(app
+            .status_message
+            .as_deref()
+            .unwrap()
+            .contains("Mark not set"));
+    }
+
+    #[test]
+    fn set_mark_rejects_non_lowercase() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('A'));
+        assert!(!app.marks.contains_key(&'A'));
+        app.process_action(Action::SetMark('1'));
+        assert!(!app.marks.contains_key(&'1'));
+    }
+
+    // ── Jump list (#32) ─────────────────────────────────────────────────────
+
+    #[test]
+    fn ctrl_o_returns_to_position_before_jump() {
+        let mut app = App::new();
+        app.sheet.row_count = 100;
+        app.cursor = (0, 0);
+        app.process_action(Action::GotoLastRow);
+        assert_eq!(app.cursor, (99, 0));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn ctrl_i_returns_to_jumped_position() {
+        let mut app = App::new();
+        app.sheet.row_count = 100;
+        app.cursor = (0, 0);
+        app.process_action(Action::GotoLastRow);
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+        app.process_action(Action::JumpForward);
+        assert_eq!(app.cursor, (99, 0));
+    }
+
+    #[test]
+    fn jump_list_capped_at_100_entries() {
+        let mut app = App::new();
+        app.sheet.row_count = 200;
+        for r in 0..150 {
+            app.cursor = (r, 0);
+            app.process_action(Action::GotoLastRow);
+        }
+        assert!(app.jump_list.len() <= 100);
+    }
+
+    #[test]
+    fn jump_back_with_empty_list_is_noop() {
+        let mut app = App::new();
+        app.cursor = (5, 0);
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn search_records_jump() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((5, 0), "foo".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::Search {
+            pattern: "foo".into(),
+            direction: crate::action::SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (5, 0));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn marks_jump_records_jump() {
+        let mut app = App::new();
+        app.cursor = (5, 5);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (5, 5));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    // ── Block jump (#35) ────────────────────────────────────────────────────
+
+    #[test]
+    fn block_jump_down_from_inside_block_to_first_empty() {
+        let mut app = App::new();
+        for r in 0..3 {
+            app.process_action(Action::EditCell((r, 0), "x".into()));
+        }
+        app.process_action(Action::EditCell((4, 0), "y".into()));
+        app.cursor = (1, 0);
+        app.process_action(Action::BlockJumpDown);
+        assert_eq!(app.cursor, (3, 0));
+    }
+
+    #[test]
+    fn block_jump_down_from_empty_to_first_non_empty() {
+        let mut app = App::new();
+        app.sheet.row_count = 6;
+        app.process_action(Action::EditCell((4, 0), "y".into()));
+        app.cursor = (1, 0);
+        app.process_action(Action::BlockJumpDown);
+        assert_eq!(app.cursor, (4, 0));
+    }
+
+    #[test]
+    fn block_jump_up_symmetric_finds_first_empty_above() {
+        let mut app = App::new();
+        for r in 0..2 {
+            app.process_action(Action::EditCell((r, 0), "x".into()));
+        }
+        app.process_action(Action::EditCell((4, 0), "y".into()));
+        app.cursor = (4, 0);
+        app.process_action(Action::BlockJumpUp);
+        // (4,0) is non-empty, so jump up to first empty row → row 3.
+        assert_eq!(app.cursor, (3, 0));
+    }
+
+    #[test]
+    fn block_jump_up_from_empty_to_first_non_empty() {
+        let mut app = App::new();
+        for r in 0..2 {
+            app.process_action(Action::EditCell((r, 0), "x".into()));
+        }
+        app.process_action(Action::EditCell((5, 0), "y".into()));
+        app.cursor = (4, 0);
+        app.process_action(Action::BlockJumpUp);
+        // (4,0) is empty, so jump up to first non-empty row → row 1.
+        assert_eq!(app.cursor, (1, 0));
+    }
+
+    #[test]
+    fn block_jump_up_at_top_is_noop() {
+        let mut app = App::new();
+        app.sheet.row_count = 5;
+        app.cursor = (0, 0);
+        app.process_action(Action::BlockJumpUp);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn block_jump_down_at_bottom_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::BlockJumpDown);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    // ── gv reselect last visual (#37) ───────────────────────────────────────
+
+    #[test]
+    fn record_last_visual_saves_anchor_cursor_kind() {
+        let mut app = App::new();
+        app.cursor = (3, 4);
+        app.record_last_visual((1, 2), VisualKind::Line);
+        let lv = app.last_visual.unwrap();
+        assert_eq!(lv.anchor, (1, 2));
+        assert_eq!(lv.cursor, (3, 4));
+        assert!(matches!(lv.kind, VisualKind::Line));
+    }
+
+    #[test]
+    fn reselect_last_visual_action_is_a_noop_in_app() {
+        let mut app = App::new();
+        app.cursor = (1, 1);
+        app.process_action(Action::ReselectLastVisual);
+        assert_eq!(app.cursor, (1, 1));
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    // ── * / # search current cell value (#36) ───────────────────────────────
+
+    #[test]
+    fn star_searches_for_current_cell_value() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::EditCell((3, 2), "foo".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::SearchCellValue { backward: false });
+        assert_eq!(app.cursor, (3, 2));
+        assert_eq!(app.search_pattern.as_deref(), Some("foo"));
+    }
+
+    #[test]
+    fn hash_searches_backward_for_current_cell_value() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::EditCell((3, 2), "foo".into()));
+        app.cursor = (3, 2);
+        app.process_action(Action::SearchCellValue { backward: true });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn star_on_empty_cell_is_noop() {
+        let mut app = App::new();
+        app.cursor = (0, 0);
+        app.process_action(Action::SearchCellValue { backward: false });
+        assert_eq!(app.search_pattern, None);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No string under cursor")
+        );
     }
 
     #[test]
