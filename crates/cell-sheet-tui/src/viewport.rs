@@ -52,6 +52,50 @@ impl Viewport {
 mod tests {
     use super::*;
 
+    // ── ensure_visible ───────────────────────────────────────────────────────
+
+    #[test]
+    fn ensure_visible_cursor_within_view_does_not_scroll() {
+        let mut vp = Viewport::new();
+        vp.visible_rows = 10;
+        vp.row_offset = 5;
+        vp.ensure_visible((10, 0)); // row 10 is within [5, 14]
+        assert_eq!(vp.row_offset, 5);
+    }
+
+    #[test]
+    fn ensure_visible_cursor_at_last_row_does_not_scroll() {
+        let mut vp = Viewport::new();
+        vp.visible_rows = 10;
+        vp.row_offset = 0;
+        vp.ensure_visible((9, 0)); // row 9 is the last visible row (0-indexed)
+        assert_eq!(vp.row_offset, 0);
+    }
+
+    #[test]
+    fn ensure_visible_cursor_one_past_last_row_scrolls_down() {
+        // Regression for issue #29: the grid widget uses 1 row for the column
+        // header, so visible_rows must equal (grid_area_height - 1). If it were
+        // set one too high, a cursor at row `visible_rows` would not trigger a
+        // scroll even though it falls outside the rendered data area.
+        let mut vp = Viewport::new();
+        vp.visible_rows = 10;
+        vp.row_offset = 0;
+        vp.ensure_visible((10, 0)); // row 10 is one past the last rendered row
+        assert_eq!(vp.row_offset, 1);
+    }
+
+    #[test]
+    fn ensure_visible_cursor_above_viewport_scrolls_up() {
+        let mut vp = Viewport::new();
+        vp.visible_rows = 10;
+        vp.row_offset = 5;
+        vp.ensure_visible((3, 0)); // row 3 is above offset 5
+        assert_eq!(vp.row_offset, 3);
+    }
+
+    // ── top_on / center_on / bottom_on ──────────────────────────────────────
+
     #[test]
     fn top_on_places_row_at_top() {
         let mut vp = Viewport::new();

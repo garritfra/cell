@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Cursor disappearing when scrolling down: `visible_rows` was set to the full
+  grid widget height, failing to account for the 1-row column header. Moving the
+  cursor to the last rendered row no longer leaves it invisible (#29)
+
 ### Added
 
 - Vim-style viewport motions in normal mode: `zz` / `zt` / `zb` recenter / scroll-to-top / scroll-to-bottom around the cursor, `H` / `M` / `L` jump the cursor to the topmost / middle / bottommost visible row, and `Ctrl-e` / `Ctrl-y` scroll the viewport one row without moving the cursor (#30)
