@@ -38,6 +38,19 @@ impl DepGraph {
         }
         self.dependencies.insert(cell, dep_set);
     }
+
+    /// Drop `cell` from the graph: removes its outgoing dependency edges and
+    /// any reverse-edge bookkeeping. Use when the cell is cleared or rewritten
+    /// as a non-formula value so stale entries don't accumulate.
+    pub fn remove(&mut self, cell: CellPos) {
+        if let Some(old_deps) = self.dependencies.remove(&cell) {
+            for dep in &old_deps {
+                if let Some(set) = self.dependents.get_mut(dep) {
+                    set.remove(&cell);
+                }
+            }
+        }
+    }
 }
 
 pub fn extract_deps(formula: &str) -> Vec<CellPos> {
@@ -260,6 +273,25 @@ mod tests {
             sheet.get_cell((0, 1)).unwrap().value,
             CellValue::Number(25.0)
         );
+    }
+
+    #[test]
+    fn remove_drops_edges() {
+        let mut sheet = Sheet::new();
+        let mut deps = DepGraph::new();
+        sheet.set_cell((0, 0), "10");
+        set_formula(&mut sheet, &mut deps, (0, 1), "=A1+5");
+        assert!(deps.dependencies.contains_key(&(0, 1)));
+        assert!(deps.dependents.get(&(0, 0)).unwrap().contains(&(0, 1)));
+
+        deps.remove((0, 1));
+
+        assert!(!deps.dependencies.contains_key(&(0, 1)));
+        assert!(!deps
+            .dependents
+            .get(&(0, 0))
+            .map(|s| s.contains(&(0, 1)))
+            .unwrap_or(false));
     }
 
     #[test]
