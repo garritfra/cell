@@ -2,20 +2,7 @@
 
 A terminal spreadsheet editor with Vim keybindings, written in Rust.
 
-```
-┌──────────────────────────────────────────────────┐
-│ A1 │ =SUM(B1:B10)                    formula bar │
-├──────────────────────────────────────────────────┤
-│     │  A       │  B       │  C       │  D        │
-├─────┼──────────┼──────────┼──────────┼───────────┤
-│  1  │ Name     │ Score    │ Total    │           │
-│  2  │ Alice    │ 95       │ 287      │           │
-│  3  │ Bob      │ 88       │          │           │
-│  4  │ Carol    │ 104      │          │           │
-├──────────────────────────────────────────────────┤
-│ NORMAL | 4 rows x 3 cols | A1        status bar  │
-└──────────────────────────────────────────────────┘
-```
+![cell screenshot](assets/cell.png)
 
 ## Install
 
@@ -43,6 +30,12 @@ cell                    # empty sheet
 cell data.csv           # open CSV
 cell data.tsv           # open TSV
 cell sheet.cell         # open native format
+```
+
+To explore an example sheet with formulas, ranges, and IF logic:
+
+```sh
+cell examples/demo.cell
 ```
 
 ## Keybindings
