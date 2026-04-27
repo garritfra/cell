@@ -167,7 +167,8 @@ fn run_loop(
 
     loop {
         let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
-        app.viewport.visible_rows = grid_height;
+        // The grid widget uses 1 row for column headers, so data rows = grid_height - 1.
+        app.viewport.visible_rows = grid_height.saturating_sub(1);
 
         let selection = visual_state.as_ref().map(|vs| vs.selection(app.cursor));
         let ic = insert_cursor;
