@@ -2,37 +2,36 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-04-27)
+
 ### Fixed
 
 - Cursor disappearing when scrolling down: `visible_rows` was set to the full
   grid widget height, failing to account for the 1-row column header. Moving the
-  cursor to the last rendered row no longer leaves it invisible (#29)
+  cursor to the last rendered row no longer leaves it invisible ([#49](https://github.com/garritfra/cell/pull/49))
+- `SUM` and `AVERAGE` now use Neumaier's improved Kahan compensated summation
+  instead of naive accumulation, eliminating catastrophic-cancellation errors
+  (e.g. `SUM(1e16, 1, -1e16)` now returns `1` instead of `0`) and keeping
+  long-sequence drift well below 1e-10 ([#48](https://github.com/garritfra/cell/pull/48))
 
 ### Added
 
-- Vim-style viewport motions in normal mode: `zz` / `zt` / `zb` recenter / scroll-to-top / scroll-to-bottom around the cursor, `H` / `M` / `L` jump the cursor to the topmost / middle / bottommost visible row, and `Ctrl-e` / `Ctrl-y` scroll the viewport one row without moving the cursor (#30)
-- Marks: `m{a-z}` records the cursor position, `'{a-z}` jumps to the marked row at column 0, `` `{a-z} `` jumps to the exact marked cell. Jumping to an unset mark surfaces an `E20: Mark not set` status message (#31)
-- Jump list with `Ctrl-o` (back) and `Ctrl-i` / Tab (forward), tracking cursor history across `gg`, `G`, marks, and `/` searches. Mid-stack jumps truncate the forward history; the list is capped at 100 entries (#32)
-- Block-jump in the current column: `}` jumps to the next block boundary downward and `{` upward, mirroring vim's paragraph motion. From a non-empty cell they land on the first empty row past the current block; from an empty cell they land on the next non-empty row (#35)
-- `*` and `#` search for the value of the cell under the cursor, forward and backward respectively, populating the search pattern so `n` and `N` keep stepping (#36)
-- `gv` re-enters the previous visual selection with the same anchor, cursor, and visual kind (Character / Line / Block) (#37)
+- Vim-style viewport motions in normal mode: `zz` / `zt` / `zb` recenter / scroll-to-top / scroll-to-bottom around the cursor, `H` / `M` / `L` jump the cursor to the topmost / middle / bottommost visible row, and `Ctrl-e` / `Ctrl-y` scroll the viewport one row without moving the cursor ([#45](https://github.com/garritfra/cell/pull/45))
+- Marks: `m{a-z}` records the cursor position, `'{a-z}` jumps to the marked row at column 0, `` `{a-z} `` jumps to the exact marked cell. Jumping to an unset mark surfaces an `E20: Mark not set` status message ([#45](https://github.com/garritfra/cell/pull/45))
+- Jump list with `Ctrl-o` (back) and `Ctrl-i` / Tab (forward), tracking cursor history across `gg`, `G`, marks, and `/` searches. Mid-stack jumps truncate the forward history; the list is capped at 100 entries ([#45](https://github.com/garritfra/cell/pull/45))
+- Block-jump in the current column: `}` jumps to the next block boundary downward and `{` upward, mirroring vim's paragraph motion. From a non-empty cell they land on the first empty row past the current block; from an empty cell they land on the next non-empty row ([#45](https://github.com/garritfra/cell/pull/45))
+- `*` and `#` search for the value of the cell under the cursor, forward and backward respectively, populating the search pattern so `n` and `N` keep stepping ([#45](https://github.com/garritfra/cell/pull/45))
+- `gv` re-enters the previous visual selection with the same anchor, cursor, and visual kind (Character / Line / Block) ([#45](https://github.com/garritfra/cell/pull/45))
 - `/<pattern>` and `?<pattern>` now open a search prompt that dispatches a
   forward or backward search; `n` and `N` step through the matches as before.
   Status line renders the corresponding `/` or `?` prefix while typing.
   Search is incremental (vim's `incsearch`): the cursor jumps to the first
   match as you type, `Esc` restores the cursor to where the prompt opened,
-  and `Enter` commits the pattern (#28)
+  and `Enter` commits the pattern ([#46](https://github.com/garritfra/cell/pull/46))
 - `f<char>` / `F<char>` jump to the next / previous non-empty cell in the
   current row whose displayed value starts with `<char>` (case-insensitive).
   Triggered immediately on the target keypress without confirmation.
-  `;` repeats the last find, `,` repeats it reversed (#28)
-
-### Fixed
-
-- `SUM` and `AVERAGE` now use Neumaier's improved Kahan compensated summation
-  instead of naive accumulation, eliminating catastrophic-cancellation errors
-  (e.g. `SUM(1e16, 1, -1e16)` now returns `1` instead of `0`) and keeping
-  long-sequence drift well below 1e-10 (#43)
+  `;` repeats the last find, `,` repeats it reversed ([#46](https://github.com/garritfra/cell/pull/46))
 
 ## 0.2.0
 
