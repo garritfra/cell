@@ -1,6 +1,7 @@
 mod action;
 mod app;
 mod clipboard;
+mod headless;
 mod mode;
 mod render;
 mod undo;
@@ -17,19 +18,72 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(name = "cell", version, about = "A terminal spreadsheet editor")]
 struct Cli {
     /// File to open (CSV, TSV, or .cell)
     file: Option<PathBuf>,
+
+    /// Print the computed value of a cell or range (e.g. A1, A1:B3).
+    /// Repeat to read multiple refs. Ranges render as TSV.
+    #[arg(long, value_name = "REF")]
+    read: Vec<String>,
+
+    /// Evaluate a formula against the loaded sheet without persisting.
+    /// The leading `=` is optional. Repeat to evaluate multiple expressions.
+    #[arg(long, value_name = "EXPR")]
+    eval: Vec<String>,
+
+    /// Set a cell to a value (auto-detects formula if it starts with `=`).
+    /// Repeat to batch multiple writes into a single save.
+    #[arg(long, value_names = ["REF", "VALUE"], num_args = 2)]
+    write: Vec<String>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    let opts = headless::Options {
+        file: cli.file.clone().unwrap_or_default(),
+        reads: cli.read,
+        evals: cli.eval,
+        writes: cli
+            .write
+            .chunks_exact(2)
+            .map(|c| (c[0].clone(), c[1].clone()))
+            .collect(),
+    };
+
+    if opts.is_active() {
+        if cli.file.is_none() {
+            eprintln!("error: a FILE argument is required for --read/--eval/--write");
+            return ExitCode::from(2);
+        }
+        let mut stdout = io::stdout().lock();
+        return match headless::run(&opts, &mut stdout) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(msg) => {
+                eprintln!("error: {msg}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    match run_tui(cli.file.as_deref()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_tui(file: Option<&std::path::Path>) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
 
-    if let Some(path) = &cli.file {
+    if let Some(path) = file {
         load_file(&mut app, path)?;
     }
 
