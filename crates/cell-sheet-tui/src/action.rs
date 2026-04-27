@@ -94,6 +94,7 @@ pub enum Action {
     SearchCellValue {
         backward: bool,
     },
+    ReselectLastVisual,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -32,6 +32,7 @@ impl NormalState {
         if let Some(prev) = self.pending.take() {
             return match (prev, key.code) {
                 ('g', KeyCode::Char('g')) => Action::GotoFirstRow,
+                ('g', KeyCode::Char('v')) => Action::ReselectLastVisual,
                 ('d', KeyCode::Char('d')) => Action::DeleteRow(app.cursor.0),
                 ('y', KeyCode::Char('y')) => Action::YankRow(app.cursor.0),
                 ('z', KeyCode::Char('z')) => Action::ScrollCursorCenter,
@@ -355,6 +356,17 @@ mod tests {
                 name: 'a',
                 line_wise: false
             }
+        );
+    }
+
+    #[test]
+    fn gv_reselects_last_visual() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('g')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('v')), &app),
+            Action::ReselectLastVisual
         );
     }
 

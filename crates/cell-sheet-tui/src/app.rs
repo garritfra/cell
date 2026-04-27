@@ -1,5 +1,6 @@
 use crate::action::{Action, Direction, Mode};
 use crate::clipboard::Register;
+use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
 use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
@@ -37,9 +38,17 @@ pub struct App {
     pub marks: HashMap<char, CellPos>,
     pub jump_list: Vec<CellPos>,
     pub jump_idx: usize,
+    pub last_visual: Option<LastVisual>,
 }
 
 const JUMP_LIST_CAP: usize = 100;
+
+#[derive(Debug, Clone, Copy)]
+pub struct LastVisual {
+    pub anchor: CellPos,
+    pub cursor: CellPos,
+    pub kind: VisualKind,
+}
 
 impl App {
     pub fn new() -> Self {
@@ -65,7 +74,17 @@ impl App {
             marks: HashMap::new(),
             jump_list: Vec::new(),
             jump_idx: 0,
+            last_visual: None,
         }
+    }
+
+    /// Snapshot the current visual selection so a later `gv` can re-enter it.
+    pub fn record_last_visual(&mut self, anchor: CellPos, kind: VisualKind) {
+        self.last_visual = Some(LastVisual {
+            anchor,
+            cursor: self.cursor,
+            kind,
+        });
     }
 
     /// Push the current cursor onto the jump list as a "from" position
@@ -579,6 +598,10 @@ impl App {
                     self.cursor = (row, self.cursor.1);
                     self.viewport.ensure_visible(self.cursor);
                 }
+            }
+            Action::ReselectLastVisual => {
+                // Re-entry into visual mode is orchestrated in main.rs because
+                // it owns the live `VisualState`. App only stores the snapshot.
             }
             Action::SearchCellValue { backward } => {
                 let pattern = self
@@ -1338,6 +1361,28 @@ mod tests {
         app.cursor = (0, 0);
         app.process_action(Action::BlockJumpUp);
         assert_eq!(app.cursor, (0, 0));
+    }
+
+    // ── gv reselect last visual (#37) ───────────────────────────────────────
+
+    #[test]
+    fn record_last_visual_saves_anchor_cursor_kind() {
+        let mut app = App::new();
+        app.cursor = (3, 4);
+        app.record_last_visual((1, 2), VisualKind::Line);
+        let lv = app.last_visual.unwrap();
+        assert_eq!(lv.anchor, (1, 2));
+        assert_eq!(lv.cursor, (3, 4));
+        assert!(matches!(lv.kind, VisualKind::Line));
+    }
+
+    #[test]
+    fn reselect_last_visual_action_is_a_noop_in_app() {
+        let mut app = App::new();
+        app.cursor = (1, 1);
+        app.process_action(Action::ReselectLastVisual);
+        assert_eq!(app.cursor, (1, 1));
+        assert_eq!(app.mode, Mode::Normal);
     }
 
     // ── * / # search current cell value (#36) ───────────────────────────────
