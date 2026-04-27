@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.7
+
 ### Added
 
 - Non-interactive CLI mode for scripting against `.cell`, CSV, and TSV files
