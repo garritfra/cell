@@ -142,7 +142,6 @@ pub enum Action {
         backward: bool,
     },
     ReselectLastVisual,
-    #[allow(dead_code)]
     SetDelimiter(u8),
 }
 

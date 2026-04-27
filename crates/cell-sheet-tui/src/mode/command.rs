@@ -26,7 +26,7 @@ fn parse_search(input: &str, direction: SearchDirection) -> Action {
 }
 
 pub fn parse_command(input: &str) -> Action {
-    let input = input.trim();
+    let input = input.trim_start();
     if input == "q" {
         Action::Quit { force: false }
     } else if input == "q!" {
@@ -54,6 +54,14 @@ pub fn parse_command(input: &str) -> Action {
             Action::ShowHelp(None)
         } else {
             Action::ShowHelp(Some(topic.to_string()))
+        }
+    } else if let Some(stripped) = input.strip_prefix("set delimiter=") {
+        let mut chars = stripped.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) if c.is_ascii() && !c.is_alphanumeric() => {
+                Action::SetDelimiter(c as u8)
+            }
+            _ => Action::Noop,
         }
     } else {
         Action::Noop
@@ -176,6 +184,45 @@ mod tests {
             parse_command("help :w"),
             Action::ShowHelp(Some(":w".into()))
         );
+    }
+
+    #[test]
+    fn parse_set_delimiter_pipe() {
+        assert_eq!(parse_command("set delimiter=|"), Action::SetDelimiter(b'|'));
+    }
+
+    #[test]
+    fn parse_set_delimiter_semicolon() {
+        assert_eq!(parse_command("set delimiter=;"), Action::SetDelimiter(b';'));
+    }
+
+    #[test]
+    fn parse_set_delimiter_tab() {
+        assert_eq!(
+            parse_command("set delimiter=\t"),
+            Action::SetDelimiter(b'\t')
+        );
+    }
+
+    #[test]
+    fn parse_set_delimiter_empty_is_noop() {
+        assert_eq!(parse_command("set delimiter="), Action::Noop);
+    }
+
+    #[test]
+    fn parse_set_delimiter_alphanumeric_is_noop() {
+        assert_eq!(parse_command("set delimiter=a"), Action::Noop);
+        assert_eq!(parse_command("set delimiter=1"), Action::Noop);
+    }
+
+    #[test]
+    fn parse_set_delimiter_multi_char_is_noop() {
+        assert_eq!(parse_command("set delimiter=||"), Action::Noop);
+    }
+
+    #[test]
+    fn parse_set_delimiter_non_ascii_is_noop() {
+        assert_eq!(parse_command("set delimiter=€"), Action::Noop);
     }
 
     fn key(code: KeyCode) -> KeyEvent {
