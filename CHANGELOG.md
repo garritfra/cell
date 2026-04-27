@@ -21,6 +21,13 @@
   Triggered immediately on the target keypress without confirmation.
   `;` repeats the last find, `,` repeats it reversed (#28)
 
+### Fixed
+
+- `SUM` and `AVERAGE` now use Neumaier's improved Kahan compensated summation
+  instead of naive accumulation, eliminating catastrophic-cancellation errors
+  (e.g. `SUM(1e16, 1, -1e16)` now returns `1` instead of `0`) and keeping
+  long-sequence drift well below 1e-10 (#43)
+
 ## 0.2.0
 
 ### Notes
