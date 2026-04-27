@@ -84,8 +84,10 @@ If you know Vim, you know cell.
 | `Ctrl-R`            | Redo                         |
 | `v`                 | Visual selection             |
 | `Ctrl-V`            | Visual block selection       |
-| `/`                 | Search                       |
+| `/` / `?`           | Search forward / backward    |
 | `n` / `N`           | Next/previous match          |
+| `f<char>` / `F<char>` | Jump to next/prev cell in row starting with `<char>` |
+| `;` / `,`           | Repeat last `f`/`F` (same / reversed direction) |
 | `:`                 | Command mode                 |
 
 

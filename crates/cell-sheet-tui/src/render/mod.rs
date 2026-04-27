@@ -105,7 +105,7 @@ pub fn render(
     frame.render_widget(
         CommandLine {
             content: &app.command_line,
-            prefix: ':',
+            prefix: app.command_kind.prefix(),
             active: is_command,
         },
         chunks[3],

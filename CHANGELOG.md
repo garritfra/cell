@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- `/<pattern>` and `?<pattern>` now open a search prompt that dispatches a
+  forward or backward search; `n` and `N` step through the matches as before.
+  Status line renders the corresponding `/` or `?` prefix while typing.
+  Search is incremental (vim's `incsearch`): the cursor jumps to the first
+  match as you type, `Esc` restores the cursor to where the prompt opened,
+  and `Enter` commits the pattern (#28)
+- `f<char>` / `F<char>` jump to the next / previous non-empty cell in the
+  current row whose displayed value starts with `<char>` (case-insensitive).
+  Triggered immediately on the target keypress without confirmation.
+  `;` repeats the last find, `,` repeats it reversed (#28)
+
 ## 0.2.0
 
 ### Notes

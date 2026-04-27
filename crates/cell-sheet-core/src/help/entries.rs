@@ -160,8 +160,14 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
     HelpEntry {
         tags: &["/"],
         category: HelpCategory::Normal,
-        summary: "Search",
-        detail: "Open the search prompt. Type a pattern and press Enter to\nfind the next cell whose value contains the pattern.\nCase-insensitive.",
+        summary: "Search forward",
+        detail: "Open the forward-search prompt. Type a pattern and press Enter to\nfind the next cell whose value contains the pattern.\nCase-insensitive. Use n / N to step through matches.",
+    },
+    HelpEntry {
+        tags: &["?"],
+        category: HelpCategory::Normal,
+        summary: "Search backward",
+        detail: "Open the backward-search prompt. Type a pattern and press Enter\nto find the previous cell whose value contains the pattern.\nCase-insensitive. Use n / N to step through matches.",
     },
     HelpEntry {
         tags: &["n"],
@@ -174,6 +180,30 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         category: HelpCategory::Normal,
         summary: "Previous search match",
         detail: "Jump to the previous cell matching the last search pattern.",
+    },
+    HelpEntry {
+        tags: &["f"],
+        category: HelpCategory::Normal,
+        summary: "Find char in row (forward)",
+        detail: "After f, the next keypress is the target character. The cursor\njumps to the next non-empty cell in the current row whose displayed\nvalue starts with that character (case-insensitive).\nUse ; to repeat and , to repeat reversed.",
+    },
+    HelpEntry {
+        tags: &["F"],
+        category: HelpCategory::Normal,
+        summary: "Find char in row (backward)",
+        detail: "Like f, but searches the current row to the left of the cursor.",
+    },
+    HelpEntry {
+        tags: &[";"],
+        category: HelpCategory::Normal,
+        summary: "Repeat last find",
+        detail: "Repeat the last f / F find in the same direction.",
+    },
+    HelpEntry {
+        tags: &[","],
+        category: HelpCategory::Normal,
+        summary: "Repeat last find reversed",
+        detail: "Repeat the last f / F find in the opposite direction.",
     },
 ];
 

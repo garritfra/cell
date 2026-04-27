@@ -153,7 +153,7 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use mode::command::{handle_command_key, parse_command, CommandAction};
+    use mode::command::{handle_command_key, submit, CommandAction};
     use mode::help::HelpState;
     use mode::insert::{handle_insert_char, handle_insert_key, InsertAction};
     use mode::normal::NormalState;
@@ -162,7 +162,6 @@ fn run_loop(
     let mut normal_state = NormalState::new();
     let mut visual_state: Option<VisualState> = None;
     let mut insert_cursor: usize = 0;
-    let mut search_mode = false;
     let mut wq_pending = false;
     let mut help_state = HelpState::new();
 
@@ -245,37 +244,58 @@ fn run_loop(
                     }
                     Mode::Help => help_state.handle_key(key, app, grid_height),
                     Mode::Command => {
+                        use action::{CommandKind, SearchDirection};
                         let cmd_action = handle_command_key(key, &app.command_line);
+                        let search_dir = match app.command_kind {
+                            CommandKind::Slash => Some(SearchDirection::Forward),
+                            CommandKind::Question => Some(SearchDirection::Backward),
+                            CommandKind::Colon => None,
+                        };
                         match cmd_action {
                             CommandAction::InsertChar(c) => {
                                 app.command_line.push(c);
-                                Action::Noop
+                                if let Some(dir) = search_dir {
+                                    Action::SearchIncremental {
+                                        pattern: app.command_line.clone(),
+                                        direction: dir,
+                                    }
+                                } else {
+                                    Action::Noop
+                                }
                             }
                             CommandAction::Backspace => {
                                 app.command_line.pop();
-                                Action::Noop
-                            }
-                            CommandAction::Execute(cmd) => {
-                                if search_mode {
-                                    search_mode = false;
-                                    let pattern = app.command_line.clone();
-                                    app.command_line.clear();
-                                    app.search_pattern = Some(pattern);
-                                    Action::ChangeMode(Mode::Normal)
-                                } else {
-                                    let is_wq = cmd.trim() == "wq";
-                                    let parsed = parse_command(&cmd);
-                                    app.command_line.clear();
-                                    if is_wq {
-                                        wq_pending = true;
+                                if let Some(dir) = search_dir {
+                                    Action::SearchIncremental {
+                                        pattern: app.command_line.clone(),
+                                        direction: dir,
                                     }
-                                    parsed
+                                } else {
+                                    Action::Noop
                                 }
                             }
-                            CommandAction::Cancel => {
+                            CommandAction::Execute(cmd) => {
+                                let kind = app.command_kind;
+                                let is_wq =
+                                    matches!(kind, CommandKind::Colon) && cmd.trim() == "wq";
+                                let parsed = submit(kind, &cmd);
                                 app.command_line.clear();
-                                search_mode = false;
-                                Action::ChangeMode(Mode::Normal)
+                                if is_wq {
+                                    wq_pending = true;
+                                }
+                                // Submitting any prompt returns to normal
+                                // mode regardless of whether the action
+                                // ends up moving the cursor.
+                                app.mode = Mode::Normal;
+                                parsed
+                            }
+                            CommandAction::Cancel => {
+                                if search_dir.is_some() {
+                                    Action::CancelSearch
+                                } else {
+                                    app.command_line.clear();
+                                    Action::ChangeMode(Mode::Normal)
+                                }
                             }
                             CommandAction::Noop => Action::Noop,
                         }
@@ -301,12 +321,6 @@ fn run_loop(
                 if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
                     insert_cursor = 0;
                 }
-                if let Action::ChangeMode(Mode::Command) = &action {
-                    if key.code == KeyCode::Char('/') {
-                        search_mode = true;
-                    }
-                }
-
                 app.process_action(action);
 
                 if wq_pending && !app.dirty {

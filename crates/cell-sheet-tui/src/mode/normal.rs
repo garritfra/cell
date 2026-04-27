@@ -1,17 +1,46 @@
-use crate::action::{Action, Direction, Mode};
+use crate::action::{Action, Direction, Mode, SearchDirection};
 use crate::app::App;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FindKind {
+    /// `f<char>` — forward, inclusive.
+    Forward,
+    /// `F<char>` — backward, inclusive.
+    Backward,
+}
+
 pub struct NormalState {
     pub pending: Option<char>,
+    /// Set after `f` or `F` so the next keypress is consumed as the target.
+    pub pending_find: Option<FindKind>,
 }
 
 impl NormalState {
     pub fn new() -> Self {
-        NormalState { pending: None }
+        NormalState {
+            pending: None,
+            pending_find: None,
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent, app: &App) -> Action {
+        // A pending `f`/`F` consumes the next keypress as its target,
+        // regardless of modifier (so `f<Shift+a>` still hits 'A').
+        if let Some(kind) = self.pending_find.take() {
+            return match key.code {
+                KeyCode::Char(c) => {
+                    let forward = matches!(kind, FindKind::Forward);
+                    Action::FindCharInRow {
+                        ch: c,
+                        forward,
+                        inclusive: true,
+                    }
+                }
+                _ => Action::Noop,
+            };
+        }
+
         // Handle Ctrl combinations first
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return match key.code {
@@ -67,9 +96,20 @@ impl NormalState {
             KeyCode::Char('p') => Action::Paste(app.cursor),
             KeyCode::Char('P') => Action::PasteBefore(app.cursor),
             KeyCode::Char('u') => Action::Undo,
-            KeyCode::Char('/') => Action::ChangeMode(Mode::Command),
+            KeyCode::Char('/') => Action::EnterSearch(SearchDirection::Forward),
+            KeyCode::Char('?') => Action::EnterSearch(SearchDirection::Backward),
             KeyCode::Char('n') => Action::SearchNext,
             KeyCode::Char('N') => Action::SearchPrev,
+            KeyCode::Char('f') => {
+                self.pending_find = Some(FindKind::Forward);
+                Action::Noop
+            }
+            KeyCode::Char('F') => {
+                self.pending_find = Some(FindKind::Backward);
+                Action::Noop
+            }
+            KeyCode::Char(';') => Action::RepeatFind { reversed: false },
+            KeyCode::Char(',') => Action::RepeatFind { reversed: true },
             KeyCode::Enter => Action::ChangeMode(Mode::Insert),
             _ => Action::Noop,
         }
@@ -198,5 +238,111 @@ mod tests {
         let app = App::new();
         let mut state = NormalState::new();
         assert_eq!(state.handle_key(ctrl_key('d'), &app), Action::HalfPageDown);
+    }
+
+    #[test]
+    fn slash_enters_forward_search_prompt() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('/')), &app),
+            Action::EnterSearch(SearchDirection::Forward)
+        );
+    }
+
+    #[test]
+    fn question_enters_backward_search_prompt() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('?')), &app),
+            Action::EnterSearch(SearchDirection::Backward)
+        );
+    }
+
+    #[test]
+    fn f_then_char_emits_forward_find() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('f')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::FindCharInRow {
+                ch: 'a',
+                forward: true,
+                inclusive: true,
+            }
+        );
+    }
+
+    #[test]
+    fn shift_f_then_char_emits_backward_find() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('F')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('Z')), &app),
+            Action::FindCharInRow {
+                ch: 'Z',
+                forward: false,
+                inclusive: true,
+            }
+        );
+    }
+
+    #[test]
+    fn pending_find_consumes_only_one_key() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('f')), &app);
+        state.handle_key(key(KeyCode::Char('a')), &app);
+        // After the find resolves, hjkl should resume working normally.
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('l')), &app),
+            Action::MoveCursor(Direction::Right)
+        );
+    }
+
+    #[test]
+    fn pending_find_swallows_non_char_keys() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('f')), &app),
+            Action::Noop
+        );
+        // Esc-as-target cancels the find without dispatching anything.
+        assert_eq!(state.handle_key(key(KeyCode::Esc), &app), Action::Noop);
+        // And it doesn't leave the state stuck.
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('h')), &app),
+            Action::MoveCursor(Direction::Left)
+        );
+    }
+
+    #[test]
+    fn semicolon_repeats_find() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char(';')), &app),
+            Action::RepeatFind { reversed: false }
+        );
+    }
+
+    #[test]
+    fn comma_repeats_find_reversed() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char(',')), &app),
+            Action::RepeatFind { reversed: true }
+        );
     }
 }
