@@ -331,17 +331,24 @@ impl App {
             }
             Action::DeleteRow(row) => {
                 let mut cells = Vec::new();
+                let mut changes = Vec::new();
                 for col in 0..self.sheet.col_count {
                     let raw = self
                         .sheet
                         .get_cell((row, col))
                         .map(|c| c.raw.clone())
                         .unwrap_or_default();
+                    if !raw.is_empty() {
+                        changes.push(((row, col), raw.clone(), String::new()));
+                        self.sheet.clear_cell((row, col));
+                    }
                     cells.push(raw);
-                    self.sheet.clear_cell((row, col));
                 }
                 self.register = Some(Register::Row(cells));
-                self.dirty = true;
+                if !changes.is_empty() {
+                    self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
+                    self.dirty = true;
+                }
             }
             Action::Paste(pos) | Action::PasteBefore(pos) => {
                 let is_after = matches!(action, Action::Paste(_));
@@ -520,16 +527,25 @@ impl App {
                 old_raw,
                 new_raw,
             } => {
-                let raw = if redo { new_raw } else { old_raw };
-                if raw.is_empty() {
-                    self.sheet.clear_cell(*pos);
-                } else if raw.starts_with('=') {
-                    set_formula(&mut self.sheet, &mut self.deps, *pos, raw);
-                } else {
-                    self.sheet.set_cell(*pos, raw);
+                self.restore_cell(*pos, if redo { new_raw } else { old_raw });
+                recalculate(&mut self.sheet, &self.deps);
+            }
+            UndoEntry::MultiCellEdit { changes } => {
+                for (pos, old_raw, new_raw) in changes {
+                    self.restore_cell(*pos, if redo { new_raw } else { old_raw });
                 }
                 recalculate(&mut self.sheet, &self.deps);
             }
+        }
+    }
+
+    fn restore_cell(&mut self, pos: CellPos, raw: &str) {
+        if raw.is_empty() {
+            self.sheet.clear_cell(pos);
+        } else if raw.starts_with('=') {
+            set_formula(&mut self.sheet, &mut self.deps, pos, raw);
+        } else {
+            self.sheet.set_cell(pos, raw);
         }
     }
 }
@@ -572,5 +588,67 @@ mod tests {
         assert_eq!(app.mode, Mode::Help);
         app.process_action(Action::ChangeMode(Mode::Normal));
         assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn dd_can_be_undone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::EditCell((0, 1), "world".into()));
+        app.process_action(Action::EditCell((1, 0), "keep".into()));
+
+        app.process_action(Action::DeleteRow(0));
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("keep")
+        );
+
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("world")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("keep")
+        );
+    }
+
+    #[test]
+    fn dd_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::EditCell((0, 1), "world".into()));
+
+        app.process_action(Action::DeleteRow(0));
+        app.process_action(Action::Undo);
+        app.process_action(Action::Redo);
+
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn dd_undo_preserves_formula() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "10".into()));
+        app.process_action(Action::EditCell((0, 1), "=A1*2".into()));
+
+        app.process_action(Action::DeleteRow(0));
+        app.process_action(Action::Undo);
+
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("=A1*2")
+        );
+        // Formula should re-evaluate after restoration.
+        let val = app.sheet.get_cell((0, 1)).map(|c| c.value.to_string());
+        assert_eq!(val.as_deref(), Some("20"));
     }
 }

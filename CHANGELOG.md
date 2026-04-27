@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+### Fixed
+
+- `dd` (delete row) is now undoable with `u`, matching Vim's behavior (#5)
+
 ## 0.1.5
 
 ### Fixed
