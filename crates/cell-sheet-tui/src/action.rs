@@ -84,6 +84,11 @@ pub enum Action {
     CursorToViewportBottom,
     ScrollLineDown,
     ScrollLineUp,
+    SetMark(char),
+    JumpToMark {
+        name: char,
+        line_wise: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

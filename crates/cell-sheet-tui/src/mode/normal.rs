@@ -36,6 +36,15 @@ impl NormalState {
                 ('z', KeyCode::Char('z')) => Action::ScrollCursorCenter,
                 ('z', KeyCode::Char('t')) => Action::ScrollCursorTop,
                 ('z', KeyCode::Char('b')) => Action::ScrollCursorBottom,
+                ('m', KeyCode::Char(c)) if c.is_ascii_lowercase() => Action::SetMark(c),
+                ('\'', KeyCode::Char(c)) if c.is_ascii_lowercase() => Action::JumpToMark {
+                    name: c,
+                    line_wise: true,
+                },
+                ('`', KeyCode::Char(c)) if c.is_ascii_lowercase() => Action::JumpToMark {
+                    name: c,
+                    line_wise: false,
+                },
                 _ => Action::Noop,
             };
         }
@@ -59,6 +68,18 @@ impl NormalState {
             }
             KeyCode::Char('z') => {
                 self.pending = Some('z');
+                Action::Noop
+            }
+            KeyCode::Char('m') => {
+                self.pending = Some('m');
+                Action::Noop
+            }
+            KeyCode::Char('\'') => {
+                self.pending = Some('\'');
+                Action::Noop
+            }
+            KeyCode::Char('`') => {
+                self.pending = Some('`');
                 Action::Noop
             }
             KeyCode::Char('H') => Action::CursorToViewportTop,
@@ -290,5 +311,55 @@ mod tests {
         let app = App::new();
         let mut state = NormalState::new();
         assert_eq!(state.handle_key(ctrl_key('y'), &app), Action::ScrollLineUp);
+    }
+
+    #[test]
+    fn ma_sets_mark() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('m')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::SetMark('a')
+        );
+    }
+
+    #[test]
+    fn apostrophe_a_jumps_line_wise() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('\'')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::JumpToMark {
+                name: 'a',
+                line_wise: true
+            }
+        );
+    }
+
+    #[test]
+    fn backtick_a_jumps_cell_wise() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('`')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::JumpToMark {
+                name: 'a',
+                line_wise: false
+            }
+        );
+    }
+
+    #[test]
+    fn mark_rejects_non_lowercase_char() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('m')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('A')), &app),
+            Action::Noop
+        );
     }
 }

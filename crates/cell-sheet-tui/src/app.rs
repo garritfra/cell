@@ -5,6 +5,7 @@ use crate::viewport::Viewport;
 use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
 use cell_sheet_core::help::HelpRegistry;
 use cell_sheet_core::model::{CellPos, Sheet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -33,6 +34,7 @@ pub struct App {
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
+    pub marks: HashMap<char, CellPos>,
 }
 
 impl App {
@@ -56,6 +58,7 @@ impl App {
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),
+            marks: HashMap::new(),
         }
     }
 
@@ -505,6 +508,20 @@ impl App {
             Action::ScrollLineUp => {
                 self.viewport.row_offset = self.viewport.row_offset.saturating_sub(1);
             }
+            Action::SetMark(name) => {
+                if name.is_ascii_lowercase() {
+                    self.marks.insert(name, self.cursor);
+                }
+            }
+            Action::JumpToMark { name, line_wise } => match self.marks.get(&name).copied() {
+                Some(pos) => {
+                    self.cursor = if line_wise { (pos.0, 0) } else { pos };
+                    self.viewport.ensure_visible(self.cursor);
+                }
+                None => {
+                    self.status_message = Some(format!("E20: Mark not set: {}", name));
+                }
+            },
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -1031,6 +1048,68 @@ mod tests {
         app.process_action(Action::ScrollLineDown);
         assert_eq!(app.viewport.row_offset, 1);
         assert_eq!(app.cursor, (5, 0));
+    }
+
+    // ── Marks (#31) ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn set_mark_records_cursor_position() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('a'));
+        assert_eq!(app.marks.get(&'a'), Some(&(5, 3)));
+    }
+
+    #[test]
+    fn backtick_jump_returns_to_exact_cell() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (5, 3));
+    }
+
+    #[test]
+    fn apostrophe_jump_returns_to_marked_row_column_zero() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: true,
+        });
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn jump_to_unset_mark_is_noop_with_status() {
+        let mut app = App::new();
+        app.cursor = (1, 1);
+        app.process_action(Action::JumpToMark {
+            name: 'q',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (1, 1));
+        assert!(app
+            .status_message
+            .as_deref()
+            .unwrap()
+            .contains("Mark not set"));
+    }
+
+    #[test]
+    fn set_mark_rejects_non_lowercase() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('A'));
+        assert!(app.marks.get(&'A').is_none());
+        app.process_action(Action::SetMark('1'));
+        assert!(app.marks.get(&'1').is_none());
     }
 
     #[test]
