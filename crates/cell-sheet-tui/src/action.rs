@@ -76,6 +76,14 @@ pub enum Action {
     DeleteRow(usize),
     YankRow(usize),
     ShowHelp(Option<String>),
+    ScrollCursorTop,
+    ScrollCursorCenter,
+    ScrollCursorBottom,
+    CursorToViewportTop,
+    CursorToViewportMiddle,
+    CursorToViewportBottom,
+    ScrollLineDown,
+    ScrollLineUp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

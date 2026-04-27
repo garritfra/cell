@@ -470,6 +470,41 @@ impl App {
                     self.mode = Mode::Help;
                 }
             },
+            Action::ScrollCursorTop => {
+                self.viewport.top_on(self.cursor.0);
+            }
+            Action::ScrollCursorCenter => {
+                self.viewport.center_on(self.cursor.0);
+            }
+            Action::ScrollCursorBottom => {
+                self.viewport.bottom_on(self.cursor.0);
+            }
+            Action::CursorToViewportTop => {
+                self.cursor = (self.viewport.row_offset, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::CursorToViewportMiddle => {
+                let mid = self
+                    .viewport
+                    .row_offset
+                    .saturating_add(self.viewport.visible_rows / 2);
+                let last_row = self.viewport.row_offset + self.viewport.visible_rows;
+                let target = mid.min(last_row.saturating_sub(1));
+                self.cursor = (target, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::CursorToViewportBottom => {
+                let bottom = (self.viewport.row_offset + self.viewport.visible_rows)
+                    .saturating_sub(1);
+                self.cursor = (bottom, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::ScrollLineDown => {
+                self.viewport.row_offset = self.viewport.row_offset.saturating_add(1);
+            }
+            Action::ScrollLineUp => {
+                self.viewport.row_offset = self.viewport.row_offset.saturating_sub(1);
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -926,6 +961,85 @@ mod tests {
 
         assert!(app.sheet.get_cell((0, 0)).is_none());
         assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    // ── Viewport navigation (#30) ───────────────────────────────────────────
+
+    #[test]
+    fn zt_scrolls_cursor_to_top() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (50, 0);
+        app.process_action(Action::ScrollCursorTop);
+        assert_eq!(app.viewport.row_offset, 50);
+        assert_eq!(app.cursor, (50, 0));
+    }
+
+    #[test]
+    fn zz_centers_cursor() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (50, 0);
+        app.process_action(Action::ScrollCursorCenter);
+        assert_eq!(app.viewport.row_offset, 45);
+    }
+
+    #[test]
+    fn zb_scrolls_cursor_to_bottom() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (50, 0);
+        app.process_action(Action::ScrollCursorBottom);
+        assert_eq!(app.viewport.row_offset, 41);
+    }
+
+    #[test]
+    fn capital_h_jumps_cursor_to_viewport_top() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 20;
+        app.cursor = (25, 3);
+        app.process_action(Action::CursorToViewportTop);
+        assert_eq!(app.cursor, (20, 3));
+    }
+
+    #[test]
+    fn capital_m_jumps_cursor_to_viewport_middle() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 20;
+        app.cursor = (20, 3);
+        app.process_action(Action::CursorToViewportMiddle);
+        assert_eq!(app.cursor, (25, 3));
+    }
+
+    #[test]
+    fn capital_l_jumps_cursor_to_viewport_bottom() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 20;
+        app.cursor = (20, 3);
+        app.process_action(Action::CursorToViewportBottom);
+        assert_eq!(app.cursor, (29, 3));
+    }
+
+    #[test]
+    fn ctrl_e_scrolls_viewport_without_moving_cursor() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.cursor = (5, 0);
+        app.process_action(Action::ScrollLineDown);
+        assert_eq!(app.viewport.row_offset, 1);
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn ctrl_y_scrolls_up_clamped_at_zero() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 0;
+        app.process_action(Action::ScrollLineUp);
+        assert_eq!(app.viewport.row_offset, 0);
     }
 
     #[test]

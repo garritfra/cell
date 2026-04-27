@@ -21,6 +21,8 @@ impl NormalState {
                 KeyCode::Char('b') => Action::PageUp,
                 KeyCode::Char('r') => Action::Redo,
                 KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
+                KeyCode::Char('e') => Action::ScrollLineDown,
+                KeyCode::Char('y') => Action::ScrollLineUp,
                 _ => Action::Noop,
             };
         }
@@ -31,6 +33,9 @@ impl NormalState {
                 ('g', KeyCode::Char('g')) => Action::GotoFirstRow,
                 ('d', KeyCode::Char('d')) => Action::DeleteRow(app.cursor.0),
                 ('y', KeyCode::Char('y')) => Action::YankRow(app.cursor.0),
+                ('z', KeyCode::Char('z')) => Action::ScrollCursorCenter,
+                ('z', KeyCode::Char('t')) => Action::ScrollCursorTop,
+                ('z', KeyCode::Char('b')) => Action::ScrollCursorBottom,
                 _ => Action::Noop,
             };
         }
@@ -52,6 +57,13 @@ impl NormalState {
                 self.pending = Some('y');
                 Action::Noop
             }
+            KeyCode::Char('z') => {
+                self.pending = Some('z');
+                Action::Noop
+            }
+            KeyCode::Char('H') => Action::CursorToViewportTop,
+            KeyCode::Char('M') => Action::CursorToViewportMiddle,
+            KeyCode::Char('L') => Action::CursorToViewportBottom,
             KeyCode::Char('G') => Action::GotoLastRow,
             KeyCode::Char('0') => Action::GotoFirstCol,
             KeyCode::Char('$') => Action::GotoLastCol,
@@ -198,5 +210,85 @@ mod tests {
         let app = App::new();
         let mut state = NormalState::new();
         assert_eq!(state.handle_key(ctrl_key('d'), &app), Action::HalfPageDown);
+    }
+
+    #[test]
+    fn zz_scrolls_cursor_to_center() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('z')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('z')), &app),
+            Action::ScrollCursorCenter
+        );
+    }
+
+    #[test]
+    fn zt_scrolls_cursor_to_top() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('z')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('t')), &app),
+            Action::ScrollCursorTop
+        );
+    }
+
+    #[test]
+    fn zb_scrolls_cursor_to_bottom() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('z')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('b')), &app),
+            Action::ScrollCursorBottom
+        );
+    }
+
+    #[test]
+    fn z_followed_by_unknown_is_noop_and_clears_pending() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('z')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('q')), &app),
+            Action::Noop
+        );
+        assert!(state.pending.is_none());
+    }
+
+    #[test]
+    fn capital_h_m_l_jump_within_viewport() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('H')), &app),
+            Action::CursorToViewportTop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('M')), &app),
+            Action::CursorToViewportMiddle
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('L')), &app),
+            Action::CursorToViewportBottom
+        );
+    }
+
+    #[test]
+    fn ctrl_e_scrolls_line_down() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(state.handle_key(ctrl_key('e'), &app), Action::ScrollLineDown);
+    }
+
+    #[test]
+    fn ctrl_y_scrolls_line_up() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(state.handle_key(ctrl_key('y'), &app), Action::ScrollLineUp);
     }
 }
