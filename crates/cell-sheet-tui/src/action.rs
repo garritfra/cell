@@ -91,6 +91,8 @@ pub enum Action {
     },
     JumpBack,
     JumpForward,
+    BlockJumpDown,
+    BlockJumpUp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

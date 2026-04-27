@@ -568,6 +568,18 @@ impl App {
                     self.viewport.ensure_visible(self.cursor);
                 }
             }
+            Action::BlockJumpDown => {
+                if let Some(row) = self.block_jump_down() {
+                    self.cursor = (row, self.cursor.1);
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::BlockJumpUp => {
+                if let Some(row) = self.block_jump_up() {
+                    self.cursor = (row, self.cursor.1);
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -609,6 +621,50 @@ impl App {
             Err(e) => {
                 self.status_message = Some(format!("Error saving: {}", e));
             }
+        }
+    }
+
+    fn cell_is_non_empty(&self, row: usize, col: usize) -> bool {
+        self.sheet.get_cell((row, col)).is_some()
+    }
+
+    /// Spec: `}` from a non-empty cell jumps to the first empty row at-or-after
+    /// the current block's last non-empty row. From an empty cell, jumps to
+    /// the first non-empty row below. Returns `None` at the sheet boundary.
+    pub fn block_jump_down(&self) -> Option<usize> {
+        let (row, col) = self.cursor;
+        let n = self.sheet.row_count;
+        if row + 1 >= n {
+            return None;
+        }
+        let start_filled = self.cell_is_non_empty(row, col);
+        let mut r = row + 1;
+        while r < n && self.cell_is_non_empty(r, col) == start_filled {
+            r += 1;
+        }
+        if r < n {
+            Some(r)
+        } else {
+            None
+        }
+    }
+
+    /// Symmetric to `block_jump_down`.
+    pub fn block_jump_up(&self) -> Option<usize> {
+        let (row, col) = self.cursor;
+        if row == 0 {
+            return None;
+        }
+        let start_filled = self.cell_is_non_empty(row, col);
+        let mut r = row - 1;
+        loop {
+            if self.cell_is_non_empty(r, col) != start_filled {
+                return Some(r);
+            }
+            if r == 0 {
+                return None;
+            }
+            r -= 1;
         }
     }
 
@@ -1203,6 +1259,74 @@ mod tests {
         });
         assert_eq!(app.cursor, (5, 0));
         app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    // ── Block jump (#35) ────────────────────────────────────────────────────
+
+    #[test]
+    fn block_jump_down_from_inside_block_to_first_empty() {
+        let mut app = App::new();
+        for r in 0..3 {
+            app.process_action(Action::EditCell((r, 0), "x".into()));
+        }
+        app.process_action(Action::EditCell((4, 0), "y".into()));
+        app.cursor = (1, 0);
+        app.process_action(Action::BlockJumpDown);
+        assert_eq!(app.cursor, (3, 0));
+    }
+
+    #[test]
+    fn block_jump_down_from_empty_to_first_non_empty() {
+        let mut app = App::new();
+        app.sheet.row_count = 6;
+        app.process_action(Action::EditCell((4, 0), "y".into()));
+        app.cursor = (1, 0);
+        app.process_action(Action::BlockJumpDown);
+        assert_eq!(app.cursor, (4, 0));
+    }
+
+    #[test]
+    fn block_jump_up_symmetric_finds_first_empty_above() {
+        let mut app = App::new();
+        for r in 0..2 {
+            app.process_action(Action::EditCell((r, 0), "x".into()));
+        }
+        app.process_action(Action::EditCell((4, 0), "y".into()));
+        app.cursor = (4, 0);
+        app.process_action(Action::BlockJumpUp);
+        // (4,0) is non-empty, so jump up to first empty row → row 3.
+        assert_eq!(app.cursor, (3, 0));
+    }
+
+    #[test]
+    fn block_jump_up_from_empty_to_first_non_empty() {
+        let mut app = App::new();
+        for r in 0..2 {
+            app.process_action(Action::EditCell((r, 0), "x".into()));
+        }
+        app.process_action(Action::EditCell((5, 0), "y".into()));
+        app.cursor = (4, 0);
+        app.process_action(Action::BlockJumpUp);
+        // (4,0) is empty, so jump up to first non-empty row → row 1.
+        assert_eq!(app.cursor, (1, 0));
+    }
+
+    #[test]
+    fn block_jump_up_at_top_is_noop() {
+        let mut app = App::new();
+        app.sheet.row_count = 5;
+        app.cursor = (0, 0);
+        app.process_action(Action::BlockJumpUp);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn block_jump_down_at_bottom_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::BlockJumpDown);
         assert_eq!(app.cursor, (0, 0));
     }
 

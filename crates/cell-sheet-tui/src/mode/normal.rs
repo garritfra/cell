@@ -91,6 +91,8 @@ impl NormalState {
             KeyCode::Char('$') => Action::GotoLastCol,
             KeyCode::Char('w') => Action::NextNonEmpty,
             KeyCode::Char('b') => Action::PrevNonEmpty,
+            KeyCode::Char('{') => Action::BlockJumpUp,
+            KeyCode::Char('}') => Action::BlockJumpDown,
             KeyCode::Char('i') | KeyCode::Char('a') => Action::ChangeMode(Mode::Insert),
             KeyCode::Char('o') => Action::ChangeMode(Mode::Insert),
             KeyCode::Char('v') => Action::ChangeMode(Mode::Visual),
@@ -351,6 +353,26 @@ mod tests {
                 name: 'a',
                 line_wise: false
             }
+        );
+    }
+
+    #[test]
+    fn brace_open_jumps_block_up() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('{')), &app),
+            Action::BlockJumpUp
+        );
+    }
+
+    #[test]
+    fn brace_close_jumps_block_down() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('}')), &app),
+            Action::BlockJumpDown
         );
     }
 
