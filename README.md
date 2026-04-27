@@ -38,6 +38,26 @@ To explore an example sheet with formulas, ranges, and IF logic:
 cell examples/demo.cell
 ```
 
+## Headless mode
+
+For shell pipelines, Makefiles, and CI, `cell` can read from and write to a
+file without launching the TUI:
+
+```sh
+cell sales.cell --read A1                 # print one cell's computed value
+cell sales.cell --read B1:B10             # print a range as TSV
+cell sales.cell --eval '=SUM(B1:B10)'     # evaluate a formula (no save)
+cell sales.cell --write A1 42             # set a cell, recalc, save in place
+cell sales.cell --write A1 42 --write B1 7 # batch multiple writes into one save
+cell sales.cell --write Total '=SUM(B:B)' --read Total  # write a formula, then print it
+```
+
+- Cell references are 1-indexed and Excel-style (`A1`, `AA10`, `A1:B3`).
+- The `=` prefix on `--eval` is optional.
+- Writes whose value starts with `=` are stored as formulas; others are auto-typed (number vs text).
+- Operations apply in a fixed order per invocation: writes → save → reads → evals.
+- Errors print to stderr; the process exits non-zero on bad refs, parse errors, or missing files.
+
 ## Keybindings
 
 If you know Vim, you know cell.

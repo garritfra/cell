@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Non-interactive CLI mode for scripting against `.cell`, CSV, and TSV files
+  without launching the TUI: `--read <ref>` prints a cell or range, `--eval <expr>`
+  evaluates a formula in-place without saving, and repeatable `--write <ref> <value>`
+  flags batch into a single save (#6)
+
 ### Fixed
 
 - Visual-mode `d` (clear range) is now undoable with `u` and redoable with `Ctrl-R`, including formula preservation (#13)
