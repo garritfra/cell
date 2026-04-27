@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Visual-mode `d` (clear range) is now undoable with `u` and redoable with `Ctrl-R`, including formula preservation (#13)
+- `p` and `P` paste operations are now undoable and redoable for cell, row, and block registers, restoring any prior content at the destination (#13)
+- Pasted formulas are now evaluated immediately instead of showing a default value until the next edit
+- Undo, redo, and visual-range clears now keep the formula dependency graph consistent when overwriting or clearing formula cells
+
 ## 0.1.6
 
 ### Fixed

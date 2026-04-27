@@ -7,7 +7,8 @@ pub enum UndoEntry {
         old_raw: String,
         new_raw: String,
     },
-    /// A group of cell edits applied atomically (e.g. `dd` deleting a row).
+    /// A group of cell edits applied atomically (e.g. `dd` deleting a row,
+    /// visual-mode `d` clearing a range, or `p`/`P` pasting a register).
     /// Each tuple is `(pos, old_raw, new_raw)`.
     MultiCellEdit {
         changes: Vec<(CellPos, String, String)>,

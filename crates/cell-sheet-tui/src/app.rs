@@ -313,6 +313,7 @@ impl App {
             Action::ClearRange { start, end } => {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 let mut block = Vec::new();
+                let mut changes = Vec::new();
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
                     for col in start.1..=max_col {
@@ -321,13 +322,20 @@ impl App {
                             .get_cell((row, col))
                             .map(|c| c.raw.clone())
                             .unwrap_or_default();
+                        if !raw.is_empty() {
+                            changes.push(((row, col), raw.clone(), String::new()));
+                            self.write_cell_raw((row, col), "");
+                        }
                         row_data.push(raw);
-                        self.sheet.clear_cell((row, col));
                     }
                     block.push(row_data);
                 }
                 self.register = Some(Register::Block(block));
-                self.dirty = true;
+                if !changes.is_empty() {
+                    self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
+                    recalculate(&mut self.sheet, &self.deps);
+                    self.dirty = true;
+                }
             }
             Action::DeleteRow(row) => {
                 let mut cells = Vec::new();
@@ -353,53 +361,74 @@ impl App {
             Action::Paste(pos) | Action::PasteBefore(pos) => {
                 let is_after = matches!(action, Action::Paste(_));
                 if let Some(reg) = &self.register.clone() {
+                    let mut changes: Vec<(CellPos, String, String)> = Vec::new();
                     match reg {
                         Register::Cell(raw) => {
                             let adjusted = crate::clipboard::adjust_formula(raw, 0, 0);
-                            if adjusted.starts_with('=') {
-                                cell_sheet_core::formula::deps::set_formula(
-                                    &mut self.sheet,
-                                    &mut self.deps,
-                                    pos,
-                                    &adjusted,
-                                );
-                            } else {
-                                self.sheet.set_cell(pos, &adjusted);
+                            let old_raw = self
+                                .sheet
+                                .get_cell(pos)
+                                .map(|c| c.raw.clone())
+                                .unwrap_or_default();
+                            if adjusted != old_raw {
+                                changes.push((pos, old_raw, adjusted.clone()));
+                                self.write_cell_raw(pos, &adjusted);
                             }
-                            self.dirty = true;
                         }
                         Register::Row(cells) => {
                             // Row (yy/dd): p pastes on line below, P on current line
                             let dest_row = if is_after { pos.0 + 1 } else { pos.0 };
                             for (col, raw) in cells.iter().enumerate() {
-                                if !raw.is_empty() {
-                                    let adjusted = crate::clipboard::adjust_formula(
-                                        raw,
-                                        dest_row as isize - pos.0 as isize,
-                                        0,
-                                    );
-                                    self.sheet.set_cell((dest_row, col), &adjusted);
+                                if raw.is_empty() {
+                                    continue;
+                                }
+                                let adjusted = crate::clipboard::adjust_formula(
+                                    raw,
+                                    dest_row as isize - pos.0 as isize,
+                                    0,
+                                );
+                                let dest = (dest_row, col);
+                                let old_raw = self
+                                    .sheet
+                                    .get_cell(dest)
+                                    .map(|c| c.raw.clone())
+                                    .unwrap_or_default();
+                                if adjusted != old_raw {
+                                    changes.push((dest, old_raw, adjusted.clone()));
+                                    self.write_cell_raw(dest, &adjusted);
                                 }
                             }
-                            self.dirty = true;
                         }
                         Register::Block(block) => {
                             // Block (visual selection): p pastes at cursor position
                             for (r_off, row_data) in block.iter().enumerate() {
                                 for (c_off, raw) in row_data.iter().enumerate() {
-                                    if !raw.is_empty() {
-                                        let adjusted = crate::clipboard::adjust_formula(
-                                            raw,
-                                            r_off as isize,
-                                            c_off as isize,
-                                        );
-                                        self.sheet
-                                            .set_cell((pos.0 + r_off, pos.1 + c_off), &adjusted);
+                                    if raw.is_empty() {
+                                        continue;
+                                    }
+                                    let adjusted = crate::clipboard::adjust_formula(
+                                        raw,
+                                        r_off as isize,
+                                        c_off as isize,
+                                    );
+                                    let dest = (pos.0 + r_off, pos.1 + c_off);
+                                    let old_raw = self
+                                        .sheet
+                                        .get_cell(dest)
+                                        .map(|c| c.raw.clone())
+                                        .unwrap_or_default();
+                                    if adjusted != old_raw {
+                                        changes.push((dest, old_raw, adjusted.clone()));
+                                        self.write_cell_raw(dest, &adjusted);
                                     }
                                 }
                             }
-                            self.dirty = true;
                         }
+                    }
+                    if !changes.is_empty() {
+                        self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
+                        recalculate(&mut self.sheet, &self.deps);
+                        self.dirty = true;
                     }
                 }
             }
@@ -527,26 +556,37 @@ impl App {
                 old_raw,
                 new_raw,
             } => {
-                self.restore_cell(*pos, if redo { new_raw } else { old_raw });
+                let raw = if redo { new_raw } else { old_raw };
+                self.write_cell_raw(*pos, raw);
                 recalculate(&mut self.sheet, &self.deps);
             }
             UndoEntry::MultiCellEdit { changes } => {
                 for (pos, old_raw, new_raw) in changes {
-                    self.restore_cell(*pos, if redo { new_raw } else { old_raw });
+                    let raw = if redo { new_raw } else { old_raw };
+                    self.write_cell_raw(*pos, raw);
                 }
                 recalculate(&mut self.sheet, &self.deps);
             }
         }
     }
 
-    fn restore_cell(&mut self, pos: CellPos, raw: &str) {
+    /// Write `raw` into `pos`, keeping the dep graph consistent and marking
+    /// dependents dirty. Does not call `recalculate` — callers batch that.
+    ///
+    /// - empty raw → clear cell + drop graph entry
+    /// - formula  → register/replace dependencies
+    /// - value    → drop any stale graph entry from a prior formula
+    fn write_cell_raw(&mut self, pos: CellPos, raw: &str) {
         if raw.is_empty() {
             self.sheet.clear_cell(pos);
+            self.deps.remove(pos);
         } else if raw.starts_with('=') {
             set_formula(&mut self.sheet, &mut self.deps, pos, raw);
         } else {
             self.sheet.set_cell(pos, raw);
+            self.deps.remove(pos);
         }
+        mark_dirty(&mut self.sheet, &self.deps, pos);
     }
 }
 
@@ -554,6 +594,260 @@ impl App {
 mod tests {
     use super::*;
     use crate::action::Action;
+
+    // ── ClearRange (visual-mode d) ──────────────────────────────────────────
+
+    #[test]
+    fn clear_range_can_be_undone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::EditCell((1, 0), "c".into()));
+        app.process_action(Action::EditCell((1, 1), "d".into()));
+        app.process_action(Action::ClearRange {
+            start: (0, 0),
+            end: (1, 1),
+        });
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("c")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 1)).map(|c| c.raw.as_str()),
+            Some("d")
+        );
+    }
+
+    #[test]
+    fn clear_range_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::ClearRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        app.process_action(Action::Redo);
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn clear_range_undo_preserves_formula() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        app.process_action(Action::ClearRange {
+            start: (0, 0),
+            end: (0, 0),
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("=1+1")
+        );
+    }
+
+    // ── Paste / PasteBefore ─────────────────────────────────────────────────
+
+    fn raw_at(app: &App, pos: CellPos) -> Option<String> {
+        app.sheet.get_cell(pos).map(|c| c.raw.clone())
+    }
+
+    #[test]
+    fn paste_cell_register_can_be_undone_into_empty() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        assert_eq!(raw_at(&app, (0, 1)).as_deref(), Some("hello"));
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn paste_cell_register_undo_restores_prior_content() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "new".into()));
+        app.process_action(Action::EditCell((0, 1), "old".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        assert_eq!(raw_at(&app, (0, 1)).as_deref(), Some("new"));
+        app.process_action(Action::Undo);
+        assert_eq!(raw_at(&app, (0, 1)).as_deref(), Some("old"));
+    }
+
+    #[test]
+    fn paste_cell_register_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        app.process_action(Action::Undo);
+        app.process_action(Action::Redo);
+        assert_eq!(raw_at(&app, (0, 1)).as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn paste_cell_identical_content_is_a_noop() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "same".into()));
+        app.process_action(Action::EditCell((0, 1), "same".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        // Undo of the prior EditCell should restore (0,1) to empty,
+        // proving that the no-op paste did not consume an undo slot.
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn paste_row_register_can_be_undone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::EditCell((0, 1), "y".into()));
+        app.process_action(Action::YankRow(0));
+        // P on row 1 puts the yanked row on row 1.
+        app.process_action(Action::PasteBefore((1, 0)));
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("x"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("y"));
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+        assert!(app.sheet.get_cell((1, 1)).is_none());
+    }
+
+    #[test]
+    fn paste_row_register_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::EditCell((0, 1), "y".into()));
+        app.process_action(Action::YankRow(0));
+        app.process_action(Action::PasteBefore((1, 0)));
+        app.process_action(Action::Undo);
+        app.process_action(Action::Redo);
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("x"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("y"));
+    }
+
+    #[test]
+    fn paste_row_register_undo_restores_prior_content() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::EditCell((0, 1), "y".into()));
+        app.process_action(Action::EditCell((1, 0), "old0".into()));
+        app.process_action(Action::EditCell((1, 1), "old1".into()));
+        app.process_action(Action::YankRow(0));
+        app.process_action(Action::PasteBefore((1, 0)));
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("x"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("y"));
+        app.process_action(Action::Undo);
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("old0"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("old1"));
+    }
+
+    #[test]
+    fn paste_block_register_can_be_undone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::YankRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        app.process_action(Action::Paste((1, 0)));
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("a"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("b"));
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+        assert!(app.sheet.get_cell((1, 1)).is_none());
+    }
+
+    #[test]
+    fn paste_block_register_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::YankRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        app.process_action(Action::Paste((1, 0)));
+        app.process_action(Action::Undo);
+        app.process_action(Action::Redo);
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("a"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn paste_block_register_undo_restores_prior_content() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::EditCell((1, 0), "old_a".into()));
+        app.process_action(Action::EditCell((1, 1), "old_b".into()));
+        app.process_action(Action::YankRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        app.process_action(Action::Paste((1, 0)));
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("a"));
+        app.process_action(Action::Undo);
+        assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("old_a"));
+        assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("old_b"));
+    }
+
+    #[test]
+    fn paste_formula_can_be_undone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn pasted_formula_is_evaluated() {
+        use cell_sheet_core::model::CellValue;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        // Pasted formula should be evaluated, not left at its default.
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.value.clone()),
+            Some(CellValue::Number(2.0))
+        );
+    }
+
+    #[test]
+    fn clear_range_of_only_empty_cells_does_not_dirty() {
+        let mut app = App::new();
+        app.sheet.col_count = 2;
+        app.sheet.row_count = 2;
+        app.dirty = false;
+        app.process_action(Action::ClearRange {
+            start: (0, 0),
+            end: (1, 1),
+        });
+        assert!(!app.dirty);
+    }
+
+    // ── Help ────────────────────────────────────────────────────────────────
 
     #[test]
     fn show_help_toc_sets_help_mode() {
