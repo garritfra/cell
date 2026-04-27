@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Vim-style viewport motions in normal mode: `zz` / `zt` / `zb` recenter / scroll-to-top / scroll-to-bottom around the cursor, `H` / `M` / `L` jump the cursor to the topmost / middle / bottommost visible row, and `Ctrl-e` / `Ctrl-y` scroll the viewport one row without moving the cursor (#30)
+- Marks: `m{a-z}` records the cursor position, `'{a-z}` jumps to the marked row at column 0, `` `{a-z} `` jumps to the exact marked cell. Jumping to an unset mark surfaces an `E20: Mark not set` status message (#31)
+- Jump list with `Ctrl-o` (back) and `Ctrl-i` / Tab (forward), tracking cursor history across `gg`, `G`, marks, and `/` searches. Mid-stack jumps truncate the forward history; the list is capped at 100 entries (#32)
+- Block-jump in the current column: `}` jumps to the next block boundary downward and `{` upward, mirroring vim's paragraph motion. From a non-empty cell they land on the first empty row past the current block; from an empty cell they land on the next non-empty row (#35)
+- `*` and `#` search for the value of the cell under the cursor, forward and backward respectively, populating the search pattern so `n` and `N` keep stepping (#36)
+- `gv` re-enters the previous visual selection with the same anchor, cursor, and visual kind (Character / Line / Block) (#37)
+
 ## 0.2.0
 
 ### Notes

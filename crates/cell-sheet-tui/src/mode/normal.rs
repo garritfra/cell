@@ -21,6 +21,9 @@ impl NormalState {
                 KeyCode::Char('b') => Action::PageUp,
                 KeyCode::Char('r') => Action::Redo,
                 KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
+                KeyCode::Char('e') => Action::ScrollLineDown,
+                KeyCode::Char('y') => Action::ScrollLineUp,
+                KeyCode::Char('o') => Action::JumpBack,
                 _ => Action::Noop,
             };
         }
@@ -29,8 +32,21 @@ impl NormalState {
         if let Some(prev) = self.pending.take() {
             return match (prev, key.code) {
                 ('g', KeyCode::Char('g')) => Action::GotoFirstRow,
+                ('g', KeyCode::Char('v')) => Action::ReselectLastVisual,
                 ('d', KeyCode::Char('d')) => Action::DeleteRow(app.cursor.0),
                 ('y', KeyCode::Char('y')) => Action::YankRow(app.cursor.0),
+                ('z', KeyCode::Char('z')) => Action::ScrollCursorCenter,
+                ('z', KeyCode::Char('t')) => Action::ScrollCursorTop,
+                ('z', KeyCode::Char('b')) => Action::ScrollCursorBottom,
+                ('m', KeyCode::Char(c)) if c.is_ascii_lowercase() => Action::SetMark(c),
+                ('\'', KeyCode::Char(c)) if c.is_ascii_lowercase() => Action::JumpToMark {
+                    name: c,
+                    line_wise: true,
+                },
+                ('`', KeyCode::Char(c)) if c.is_ascii_lowercase() => Action::JumpToMark {
+                    name: c,
+                    line_wise: false,
+                },
                 _ => Action::Noop,
             };
         }
@@ -52,11 +68,32 @@ impl NormalState {
                 self.pending = Some('y');
                 Action::Noop
             }
+            KeyCode::Char('z') => {
+                self.pending = Some('z');
+                Action::Noop
+            }
+            KeyCode::Char('m') => {
+                self.pending = Some('m');
+                Action::Noop
+            }
+            KeyCode::Char('\'') => {
+                self.pending = Some('\'');
+                Action::Noop
+            }
+            KeyCode::Char('`') => {
+                self.pending = Some('`');
+                Action::Noop
+            }
+            KeyCode::Char('H') => Action::CursorToViewportTop,
+            KeyCode::Char('M') => Action::CursorToViewportMiddle,
+            KeyCode::Char('L') => Action::CursorToViewportBottom,
             KeyCode::Char('G') => Action::GotoLastRow,
             KeyCode::Char('0') => Action::GotoFirstCol,
             KeyCode::Char('$') => Action::GotoLastCol,
             KeyCode::Char('w') => Action::NextNonEmpty,
             KeyCode::Char('b') => Action::PrevNonEmpty,
+            KeyCode::Char('{') => Action::BlockJumpUp,
+            KeyCode::Char('}') => Action::BlockJumpDown,
             KeyCode::Char('i') | KeyCode::Char('a') => Action::ChangeMode(Mode::Insert),
             KeyCode::Char('o') => Action::ChangeMode(Mode::Insert),
             KeyCode::Char('v') => Action::ChangeMode(Mode::Visual),
@@ -70,6 +107,9 @@ impl NormalState {
             KeyCode::Char('/') => Action::ChangeMode(Mode::Command),
             KeyCode::Char('n') => Action::SearchNext,
             KeyCode::Char('N') => Action::SearchPrev,
+            KeyCode::Char('*') => Action::SearchCellValue { backward: false },
+            KeyCode::Char('#') => Action::SearchCellValue { backward: true },
+            KeyCode::Tab => Action::JumpForward,
             KeyCode::Enter => Action::ChangeMode(Mode::Insert),
             _ => Action::Noop,
         }
@@ -198,5 +238,206 @@ mod tests {
         let app = App::new();
         let mut state = NormalState::new();
         assert_eq!(state.handle_key(ctrl_key('d'), &app), Action::HalfPageDown);
+    }
+
+    #[test]
+    fn zz_scrolls_cursor_to_center() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('z')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('z')), &app),
+            Action::ScrollCursorCenter
+        );
+    }
+
+    #[test]
+    fn zt_scrolls_cursor_to_top() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('z')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('t')), &app),
+            Action::ScrollCursorTop
+        );
+    }
+
+    #[test]
+    fn zb_scrolls_cursor_to_bottom() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('z')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('b')), &app),
+            Action::ScrollCursorBottom
+        );
+    }
+
+    #[test]
+    fn z_followed_by_unknown_is_noop_and_clears_pending() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('z')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('q')), &app),
+            Action::Noop
+        );
+        assert!(state.pending.is_none());
+    }
+
+    #[test]
+    fn capital_h_m_l_jump_within_viewport() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('H')), &app),
+            Action::CursorToViewportTop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('M')), &app),
+            Action::CursorToViewportMiddle
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('L')), &app),
+            Action::CursorToViewportBottom
+        );
+    }
+
+    #[test]
+    fn ctrl_e_scrolls_line_down() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(ctrl_key('e'), &app),
+            Action::ScrollLineDown
+        );
+    }
+
+    #[test]
+    fn ctrl_y_scrolls_line_up() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(state.handle_key(ctrl_key('y'), &app), Action::ScrollLineUp);
+    }
+
+    #[test]
+    fn ma_sets_mark() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('m')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::SetMark('a')
+        );
+    }
+
+    #[test]
+    fn apostrophe_a_jumps_line_wise() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('\'')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::JumpToMark {
+                name: 'a',
+                line_wise: true
+            }
+        );
+    }
+
+    #[test]
+    fn backtick_a_jumps_cell_wise() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('`')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('a')), &app),
+            Action::JumpToMark {
+                name: 'a',
+                line_wise: false
+            }
+        );
+    }
+
+    #[test]
+    fn gv_reselects_last_visual() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('g')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('v')), &app),
+            Action::ReselectLastVisual
+        );
+    }
+
+    #[test]
+    fn star_searches_cell_value_forward() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('*')), &app),
+            Action::SearchCellValue { backward: false }
+        );
+    }
+
+    #[test]
+    fn hash_searches_cell_value_backward() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('#')), &app),
+            Action::SearchCellValue { backward: true }
+        );
+    }
+
+    #[test]
+    fn brace_open_jumps_block_up() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('{')), &app),
+            Action::BlockJumpUp
+        );
+    }
+
+    #[test]
+    fn brace_close_jumps_block_down() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('}')), &app),
+            Action::BlockJumpDown
+        );
+    }
+
+    #[test]
+    fn ctrl_o_jumps_back() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(state.handle_key(ctrl_key('o'), &app), Action::JumpBack);
+    }
+
+    #[test]
+    fn tab_jumps_forward() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Tab), &app),
+            Action::JumpForward
+        );
+    }
+
+    #[test]
+    fn mark_rejects_non_lowercase_char() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        state.handle_key(key(KeyCode::Char('m')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('A')), &app),
+            Action::Noop
+        );
     }
 }

@@ -12,7 +12,6 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SearchDirection {
     Forward,
-    #[allow(dead_code)]
     Backward,
 }
 
@@ -54,7 +53,6 @@ pub enum Action {
         col: usize,
         ascending: bool,
     },
-    #[allow(dead_code)]
     Search {
         pattern: String,
         direction: SearchDirection,
@@ -76,6 +74,27 @@ pub enum Action {
     DeleteRow(usize),
     YankRow(usize),
     ShowHelp(Option<String>),
+    ScrollCursorTop,
+    ScrollCursorCenter,
+    ScrollCursorBottom,
+    CursorToViewportTop,
+    CursorToViewportMiddle,
+    CursorToViewportBottom,
+    ScrollLineDown,
+    ScrollLineUp,
+    SetMark(char),
+    JumpToMark {
+        name: char,
+        line_wise: bool,
+    },
+    JumpBack,
+    JumpForward,
+    BlockJumpDown,
+    BlockJumpUp,
+    SearchCellValue {
+        backward: bool,
+    },
+    ReselectLastVisual,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
