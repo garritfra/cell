@@ -198,6 +198,11 @@ Pushing a `v*` tag triggers the [release workflow](.github/workflows/release.yml
 - Creates a GitHub Release with the binaries attached
 - Publishes `cell-sheet-core` and `cell-sheet-tui` to [crates.io](https://crates.io) via trusted publishing
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development setup, project conventions, and pull request workflow.
+
 ## License
 
 [MIT](LICENSE)
