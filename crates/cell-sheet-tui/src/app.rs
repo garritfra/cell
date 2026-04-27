@@ -40,6 +40,7 @@ pub struct App {
     pub dirty: bool,
     pub should_quit: bool,
     pub insert_buffer: String,
+    pub delimiter: u8,
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
@@ -79,6 +80,7 @@ impl App {
             dirty: false,
             should_quit: false,
             insert_buffer: String::new(),
+            delimiter: b',',
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),
@@ -608,6 +610,7 @@ impl App {
                     self.mode = Mode::Help;
                 }
             },
+<<<<<<< HEAD
             Action::ScrollCursorTop => {
                 self.viewport.top_on(self.cursor.0);
             }
@@ -710,6 +713,10 @@ impl App {
                 } else {
                     self.status_message = Some("No string under cursor".into());
                 }
+            }
+            Action::SetDelimiter(d) => {
+                self.delimiter = d;
+                self.status_message = Some(format!("Delimiter set to '{}'", d as char));
             }
             Action::Open(_) | Action::Resize => {}
         }
@@ -2036,6 +2043,22 @@ mod tests {
             app.status_message.as_deref(),
             Some("No string under cursor")
         );
+    }
+
+    #[test]
+    fn set_delimiter_updates_field_and_status() {
+        let mut app = App::new();
+        assert_eq!(app.delimiter, b',', "default delimiter should be comma");
+        app.process_action(Action::SetDelimiter(b'|'));
+        assert_eq!(app.delimiter, b'|');
+        assert_eq!(app.status_message.as_deref(), Some("Delimiter set to '|'"));
+    }
+
+    #[test]
+    fn set_delimiter_tab() {
+        let mut app = App::new();
+        app.process_action(Action::SetDelimiter(b'\t'));
+        assert_eq!(app.delimiter, b'\t');
     }
 
     #[test]
