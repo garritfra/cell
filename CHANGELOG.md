@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0
+
+### Notes
+
+- Re-release of `0.1.7`. The original `v0.1.7` tag was force-moved after publishing,
+  which re-triggered the release workflow and caused a (harmless) failure when
+  `cargo publish` refused to overwrite the already-published `0.1.7` crates. No
+  code changes since `0.1.7` — version bumped to `0.2.0` to obtain a clean
+  release run.
+
 ## 0.1.7
 
 ### Added
