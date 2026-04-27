@@ -15,6 +15,27 @@ pub enum SearchDirection {
     Backward,
 }
 
+/// Discriminator for the prompt rendered in `Mode::Command`.
+///
+/// `:` parses ex-style commands. `/` and `?` parse a search pattern that
+/// is dispatched as `Action::Search` with the corresponding direction.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CommandKind {
+    Colon,
+    Slash,
+    Question,
+}
+
+impl CommandKind {
+    pub fn prefix(self) -> char {
+        match self {
+            CommandKind::Colon => ':',
+            CommandKind::Slash => '/',
+            CommandKind::Question => '?',
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Noop,
@@ -59,6 +80,32 @@ pub enum Action {
     },
     SearchNext,
     SearchPrev,
+    /// Switch to `Mode::Command` with a search prompt (`/` or `?`).
+    /// Saves the current cursor as the search origin so Esc can restore it.
+    EnterSearch(SearchDirection),
+    /// Re-run the search from the saved origin as the user types in the
+    /// `/` or `?` prompt (vim's `incsearch`). Empty pattern restores the
+    /// cursor to the origin without committing a pattern.
+    SearchIncremental {
+        pattern: String,
+        direction: SearchDirection,
+    },
+    /// Esc out of a `/` or `?` prompt: restore the cursor to the saved
+    /// search origin and clear it.
+    CancelSearch,
+    /// Move the cursor to the next non-empty cell in the current row whose
+    /// displayed value starts with `ch` (case-insensitive). `forward = false`
+    /// scans left. `inclusive = true` lands on the match (`f`/`F`).
+    FindCharInRow {
+        ch: char,
+        forward: bool,
+        inclusive: bool,
+    },
+    /// Repeat the last `f`/`F` find. When `reversed`, flip the direction
+    /// (i.e. vim's `,`).
+    RepeatFind {
+        reversed: bool,
+    },
     #[allow(dead_code)]
     Resize,
     PageDown,

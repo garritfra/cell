@@ -10,6 +10,16 @@
 - Block-jump in the current column: `}` jumps to the next block boundary downward and `{` upward, mirroring vim's paragraph motion. From a non-empty cell they land on the first empty row past the current block; from an empty cell they land on the next non-empty row (#35)
 - `*` and `#` search for the value of the cell under the cursor, forward and backward respectively, populating the search pattern so `n` and `N` keep stepping (#36)
 - `gv` re-enters the previous visual selection with the same anchor, cursor, and visual kind (Character / Line / Block) (#37)
+- `/<pattern>` and `?<pattern>` now open a search prompt that dispatches a
+  forward or backward search; `n` and `N` step through the matches as before.
+  Status line renders the corresponding `/` or `?` prefix while typing.
+  Search is incremental (vim's `incsearch`): the cursor jumps to the first
+  match as you type, `Esc` restores the cursor to where the prompt opened,
+  and `Enter` commits the pattern (#28)
+- `f<char>` / `F<char>` jump to the next / previous non-empty cell in the
+  current row whose displayed value starts with `<char>` (case-insensitive).
+  Triggered immediately on the target keypress without confirmation.
+  `;` repeats the last find, `,` repeats it reversed (#28)
 
 ## 0.2.0
 

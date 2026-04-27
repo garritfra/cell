@@ -1,4 +1,4 @@
-use crate::action::{Action, Direction, Mode};
+use crate::action::{Action, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
 use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
@@ -25,8 +25,16 @@ pub struct App {
     pub register: Option<Register>,
     pub undo_stack: UndoStack,
     pub command_line: String,
+    pub command_kind: CommandKind,
     pub status_message: Option<String>,
     pub search_pattern: Option<String>,
+    /// Cursor position captured when the user opened a `/` or `?` prompt.
+    /// `Some` for the lifetime of an open search prompt; consumed on Esc
+    /// (cursor restored) or Enter with a non-empty pattern (committed).
+    pub search_origin: Option<CellPos>,
+    /// Last `f`/`F` target so `;` and `,` can replay it. Holds
+    /// `(char, forward, inclusive)`.
+    pub last_find: Option<(char, bool, bool)>,
     pub file_path: Option<PathBuf>,
     pub file_format: FileFormat,
     pub dirty: bool,
@@ -61,8 +69,11 @@ impl App {
             register: None,
             undo_stack: UndoStack::new(),
             command_line: String::new(),
+            command_kind: CommandKind::Colon,
             status_message: None,
             search_pattern: None,
+            search_origin: None,
+            last_find: None,
             file_path: None,
             file_format: FileFormat::Csv,
             dirty: false,
@@ -151,6 +162,10 @@ impl App {
                         .get_cell(self.cursor)
                         .map(|c| c.raw.clone())
                         .unwrap_or_default();
+                }
+                if mode == Mode::Command {
+                    self.command_kind = CommandKind::Colon;
+                    self.command_line.clear();
                 }
                 self.mode = mode;
             }
@@ -300,9 +315,83 @@ impl App {
                 }
             }
             Action::Search { pattern, direction } => {
+                if pattern.is_empty() {
+                    // Empty submit: restore cursor to where the prompt opened
+                    // (matches vim's behavior of "no match → no movement"),
+                    // and don't overwrite an existing pattern.
+                    if let Some(origin) = self.search_origin.take() {
+                        self.cursor = origin;
+                        self.viewport.ensure_visible(self.cursor);
+                    }
+                    return;
+                }
                 self.record_jump();
                 self.search_pattern = Some(pattern.clone());
-                self.find_next(direction == crate::action::SearchDirection::Forward);
+                let forward = direction == SearchDirection::Forward;
+                // If a prompt is open (origin set), commit at the incremental
+                // position by re-running the search from origin, including
+                // origin as a candidate. Without an open prompt (e.g.
+                // `Action::Search` dispatched directly), behave like vim's
+                // `/<pattern>`: step past the current cell.
+                let (origin, include_origin) = match self.search_origin.take() {
+                    Some(o) => (o, true),
+                    None => (self.cursor, false),
+                };
+                if !self.find_from(&pattern, forward, origin, include_origin) {
+                    if include_origin {
+                        self.cursor = origin;
+                        self.viewport.ensure_visible(self.cursor);
+                    }
+                    self.status_message = Some(format!("Pattern not found: {}", pattern));
+                }
+            }
+            Action::EnterSearch(direction) => {
+                self.command_line.clear();
+                self.command_kind = match direction {
+                    SearchDirection::Forward => CommandKind::Slash,
+                    SearchDirection::Backward => CommandKind::Question,
+                };
+                self.search_origin = Some(self.cursor);
+                self.mode = Mode::Command;
+            }
+            Action::SearchIncremental { pattern, direction } => {
+                let Some(origin) = self.search_origin else {
+                    return;
+                };
+                if pattern.is_empty() {
+                    self.cursor = origin;
+                    self.viewport.ensure_visible(self.cursor);
+                    return;
+                }
+                let forward = direction == SearchDirection::Forward;
+                if !self.find_from(&pattern, forward, origin, true) {
+                    // No match: snap back to origin so the user sees they're
+                    // not on a stale earlier match.
+                    self.cursor = origin;
+                    self.viewport.ensure_visible(self.cursor);
+                }
+            }
+            Action::CancelSearch => {
+                if let Some(origin) = self.search_origin.take() {
+                    self.cursor = origin;
+                    self.viewport.ensure_visible(self.cursor);
+                }
+                self.command_line.clear();
+                self.mode = Mode::Normal;
+            }
+            Action::FindCharInRow {
+                ch,
+                forward,
+                inclusive,
+            } => {
+                self.last_find = Some((ch, forward, inclusive));
+                self.find_char_in_row(ch, forward, inclusive);
+            }
+            Action::RepeatFind { reversed } => {
+                if let Some((ch, forward, inclusive)) = self.last_find {
+                    let dir = if reversed { !forward } else { forward };
+                    self.find_char_in_row(ch, dir, inclusive);
+                }
             }
             Action::SearchNext => {
                 if self.search_pattern.is_some() {
@@ -711,21 +800,38 @@ impl App {
     }
 
     fn find_next(&mut self, forward: bool) {
-        let pattern = match &self.search_pattern {
-            Some(p) => p.to_lowercase(),
+        let pattern = match self.search_pattern.clone() {
+            Some(p) => p,
             None => return,
         };
+        if !self.find_from(&pattern, forward, self.cursor, false) {
+            self.status_message = Some(format!("Pattern not found: {}", pattern));
+        }
+    }
 
+    /// Scan cells starting at `origin` in row-major order (wrapping) for the
+    /// first cell whose displayed value contains `pattern` (case-insensitive).
+    /// On a hit, moves the cursor and returns `true`. `include_origin` decides
+    /// whether `origin` itself is a candidate — `true` for incremental search
+    /// so typing the first matching char already lands on the origin if it
+    /// matches; `false` for `n`/`N` so they always step.
+    fn find_from(
+        &mut self,
+        pattern: &str,
+        forward: bool,
+        origin: CellPos,
+        include_origin: bool,
+    ) -> bool {
         let total_cells = self.sheet.row_count * self.sheet.col_count.max(1);
         if total_cells == 0 {
-            return;
+            return false;
         }
-
-        let (start_row, start_col) = self.cursor;
         let cols = self.sheet.col_count.max(1);
+        let needle = pattern.to_lowercase();
+        let start = if include_origin { 0 } else { 1 };
 
-        for offset in 1..=total_cells {
-            let flat = start_row * cols + start_col;
+        for offset in start..=total_cells {
+            let flat = origin.0 * cols + origin.1;
             let next_flat = if forward {
                 (flat + offset) % total_cells
             } else {
@@ -735,14 +841,64 @@ impl App {
             let col = next_flat % cols;
 
             if let Some(cell) = self.sheet.get_cell((row, col)) {
-                if cell.value.to_string().to_lowercase().contains(&pattern) {
+                if cell.value.to_string().to_lowercase().contains(&needle) {
                     self.cursor = (row, col);
+                    self.viewport.ensure_visible(self.cursor);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Move the cursor along the current row to the next non-empty cell whose
+    /// displayed value starts with `ch` (case-insensitive). On no match the
+    /// cursor stays put. `inclusive = false` lands one cell short (vim `t`).
+    fn find_char_in_row(&mut self, ch: char, forward: bool, inclusive: bool) {
+        let target = ch.to_lowercase().next().unwrap_or(ch);
+        let (row, col) = self.cursor;
+        let cols = self.sheet.col_count;
+        if cols == 0 {
+            return;
+        }
+
+        let cell_starts_with = |sheet: &Sheet, pos: CellPos, t: char| -> bool {
+            let Some(cell) = sheet.get_cell(pos) else {
+                return false;
+            };
+            let s = cell.value.to_string();
+            if s.is_empty() {
+                return false;
+            }
+            s.chars()
+                .next()
+                .map(|c| c.to_lowercase().next().unwrap_or(c) == t)
+                .unwrap_or(false)
+        };
+
+        if forward {
+            for c in (col + 1)..cols {
+                if cell_starts_with(&self.sheet, (row, c), target) {
+                    let landing = if inclusive {
+                        c
+                    } else {
+                        c.saturating_sub(1).max(col)
+                    };
+                    self.cursor = (row, landing);
+                    self.viewport.ensure_visible(self.cursor);
+                    return;
+                }
+            }
+        } else {
+            for c in (0..col).rev() {
+                if cell_starts_with(&self.sheet, (row, c), target) {
+                    let landing = if inclusive { c } else { (c + 1).min(col) };
+                    self.cursor = (row, landing);
                     self.viewport.ensure_visible(self.cursor);
                     return;
                 }
             }
         }
-        self.status_message = Some(format!("Pattern not found: {}", pattern));
     }
 
     fn apply_undo_entry(&mut self, entry: &UndoEntry, redo: bool) {
@@ -1124,6 +1280,425 @@ mod tests {
         assert!(app.sheet.get_cell((0, 1)).is_none());
     }
 
+    // ── Search prompt (/?) ──────────────────────────────────────────────────
+
+    #[test]
+    fn enter_search_forward_sets_command_mode_with_slash_prefix() {
+        use crate::action::{CommandKind, SearchDirection};
+        let mut app = App::new();
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        assert_eq!(app.mode, Mode::Command);
+        assert_eq!(app.command_kind, CommandKind::Slash);
+        assert!(app.command_line.is_empty());
+    }
+
+    #[test]
+    fn enter_search_backward_sets_question_prefix() {
+        use crate::action::{CommandKind, SearchDirection};
+        let mut app = App::new();
+        app.process_action(Action::EnterSearch(SearchDirection::Backward));
+        assert_eq!(app.mode, Mode::Command);
+        assert_eq!(app.command_kind, CommandKind::Question);
+    }
+
+    #[test]
+    fn change_mode_command_resets_to_colon() {
+        use crate::action::{CommandKind, SearchDirection};
+        let mut app = App::new();
+        // Enter search, then user backs out and re-enters via `:`.
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::ChangeMode(Mode::Normal));
+        app.process_action(Action::ChangeMode(Mode::Command));
+        assert_eq!(app.command_kind, CommandKind::Colon);
+    }
+
+    #[test]
+    fn forward_search_populates_pattern_and_moves_cursor() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((0, 1), "beta".into()));
+        app.process_action(Action::EditCell((1, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::Search {
+            pattern: "gamma".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.search_pattern.as_deref(), Some("gamma"));
+        assert_eq!(app.cursor, (1, 0));
+    }
+
+    #[test]
+    fn backward_search_walks_backwards() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((1, 0), "beta".into()));
+        app.process_action(Action::EditCell((2, 0), "alpha".into()));
+        app.cursor = (1, 0);
+        app.process_action(Action::Search {
+            pattern: "alpha".into(),
+            direction: SearchDirection::Backward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn search_next_after_search_keeps_stepping() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::EditCell((1, 0), "x".into()));
+        app.process_action(Action::EditCell((2, 0), "x".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::Search {
+            pattern: "x".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (1, 0));
+        app.process_action(Action::SearchNext);
+        assert_eq!(app.cursor, (2, 0));
+    }
+
+    #[test]
+    fn empty_pattern_does_not_overwrite_search_pattern() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::Search {
+            pattern: "first".into(),
+            direction: SearchDirection::Forward,
+        });
+        app.process_action(Action::Search {
+            pattern: String::new(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.search_pattern.as_deref(), Some("first"));
+    }
+
+    // ── Incremental search ──────────────────────────────────────────────────
+
+    #[test]
+    fn enter_search_records_origin() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.cursor = (3, 2);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        assert_eq!(app.search_origin, Some((3, 2)));
+    }
+
+    #[test]
+    fn incremental_search_moves_cursor_as_user_types() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((1, 0), "beta".into()));
+        app.process_action(Action::EditCell((2, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        // User types `g` — should jump to "gamma" already.
+        app.process_action(Action::SearchIncremental {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (2, 0));
+        // User adds `am` — still on gamma.
+        app.process_action(Action::SearchIncremental {
+            pattern: "gam".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (2, 0));
+    }
+
+    #[test]
+    fn incremental_search_does_not_compound_movement() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((1, 0), "alpine".into()));
+        app.process_action(Action::EditCell((2, 0), "ant".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        // First match for "a" with origin=(0,0) and include_origin=true is
+        // (0,0) itself. Without origin tracking, a second char would search
+        // again from (0,0) and stay; with origin tracking, "al" should still
+        // anchor on the origin and find (0,0) (alpha contains "al").
+        app.process_action(Action::SearchIncremental {
+            pattern: "a".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+        app.process_action(Action::SearchIncremental {
+            pattern: "alp".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+        app.process_action(Action::SearchIncremental {
+            pattern: "alpi".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (1, 0));
+    }
+
+    #[test]
+    fn incremental_search_empty_pattern_restores_to_origin() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((2, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::SearchIncremental {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (2, 0));
+        // User backspaces back to empty — cursor should snap back to origin.
+        app.process_action(Action::SearchIncremental {
+            pattern: String::new(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn incremental_search_no_match_snaps_back_to_origin() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((2, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::SearchIncremental {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (2, 0));
+        // Add a char that breaks the match — cursor should reset to origin.
+        app.process_action(Action::SearchIncremental {
+            pattern: "gz".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn cancel_search_restores_cursor_and_returns_to_normal() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((2, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::SearchIncremental {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (2, 0));
+        app.process_action(Action::CancelSearch);
+        assert_eq!(app.cursor, (0, 0));
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.search_origin, None);
+    }
+
+    #[test]
+    fn submit_search_commits_at_incremental_position() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((2, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::SearchIncremental {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        // Enter pressed: Action::Search submitted with the typed pattern.
+        app.process_action(Action::Search {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (2, 0));
+        assert_eq!(app.search_pattern.as_deref(), Some("g"));
+        assert_eq!(app.search_origin, None);
+    }
+
+    #[test]
+    fn submit_search_with_no_match_returns_to_origin() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::Search {
+            pattern: "zzz".into(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+        assert!(app.status_message.is_some());
+    }
+
+    #[test]
+    fn submit_empty_search_after_typing_restores_to_origin() {
+        use crate::action::SearchDirection;
+        let mut app = App::new();
+        app.process_action(Action::EditCell((2, 0), "gamma".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::EnterSearch(SearchDirection::Forward));
+        app.process_action(Action::SearchIncremental {
+            pattern: "g".into(),
+            direction: SearchDirection::Forward,
+        });
+        // User backspaces to empty then hits Enter.
+        app.process_action(Action::Search {
+            pattern: String::new(),
+            direction: SearchDirection::Forward,
+        });
+        assert_eq!(app.cursor, (0, 0));
+        assert_eq!(app.search_origin, None);
+    }
+
+    // ── f / F / ; / , ───────────────────────────────────────────────────────
+
+    fn setup_row(app: &mut App, cells: &[(usize, &str)]) {
+        for (col, raw) in cells {
+            app.process_action(Action::EditCell((0, *col), (*raw).into()));
+        }
+    }
+
+    #[test]
+    fn find_char_forward_lands_on_starts_with_match() {
+        let mut app = App::new();
+        setup_row(
+            &mut app,
+            &[(0, "alpha"), (1, "beta"), (2, "gamma"), (3, "delta")],
+        );
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'g',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 2));
+    }
+
+    #[test]
+    fn find_char_is_case_insensitive() {
+        let mut app = App::new();
+        setup_row(&mut app, &[(0, "alpha"), (1, "Beta"), (2, "gamma")]);
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'b',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 1));
+    }
+
+    #[test]
+    fn find_char_backward_lands_on_match() {
+        let mut app = App::new();
+        setup_row(
+            &mut app,
+            &[(0, "alpha"), (1, "beta"), (2, "gamma"), (3, "delta")],
+        );
+        app.cursor = (0, 3);
+        app.process_action(Action::FindCharInRow {
+            ch: 'a',
+            forward: false,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn find_char_no_match_keeps_cursor() {
+        let mut app = App::new();
+        setup_row(&mut app, &[(0, "alpha"), (1, "beta"), (2, "gamma")]);
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'z',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn find_char_skips_empty_cells() {
+        let mut app = App::new();
+        // Row has gaps at col 1 and 3.
+        setup_row(&mut app, &[(0, "alpha"), (2, "beta"), (4, "berry")]);
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'b',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 2));
+    }
+
+    #[test]
+    fn find_char_remembers_last_target_for_repeat() {
+        let mut app = App::new();
+        setup_row(&mut app, &[(0, "alpha"), (1, "beta"), (2, "berry")]);
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'b',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 1));
+        app.process_action(Action::RepeatFind { reversed: false });
+        assert_eq!(app.cursor, (0, 2));
+    }
+
+    #[test]
+    fn comma_repeats_find_reversed_direction() {
+        let mut app = App::new();
+        setup_row(
+            &mut app,
+            &[(0, "alpha"), (1, "beta"), (2, "berry"), (3, "delta")],
+        );
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'b',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 1));
+        // ; would step forward to col 2; , flips and steps back to col... but
+        // there's no `b` to the left of col 1. Cursor should stay put.
+        app.process_action(Action::RepeatFind { reversed: true });
+        assert_eq!(app.cursor, (0, 1));
+        // Now move right past berry, then , should walk back to it.
+        app.cursor = (0, 3);
+        app.process_action(Action::RepeatFind { reversed: true });
+        assert_eq!(app.cursor, (0, 2));
+    }
+
+    #[test]
+    fn repeat_find_with_no_prior_find_is_noop() {
+        let mut app = App::new();
+        setup_row(&mut app, &[(0, "alpha"), (1, "beta")]);
+        app.cursor = (0, 0);
+        app.process_action(Action::RepeatFind { reversed: false });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn find_char_uses_displayed_value_not_raw() {
+        // Formula displayed value should drive the match, not the raw `=…`.
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "alpha".into()));
+        app.process_action(Action::EditCell((0, 1), "=\"banana\"".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::FindCharInRow {
+            ch: 'b',
+            forward: true,
+            inclusive: true,
+        });
+        assert_eq!(app.cursor, (0, 1));
+    }
+
     // ── Viewport navigation (#30) ───────────────────────────────────────────
 
     #[test]
@@ -1194,6 +1769,15 @@ mod tests {
         assert_eq!(app.cursor, (5, 0));
     }
 
+    #[test]
+    fn ctrl_y_scrolls_up_clamped_at_zero() {
+        let mut app = App::new();
+        app.viewport.visible_rows = 10;
+        app.viewport.row_offset = 0;
+        app.process_action(Action::ScrollLineUp);
+        assert_eq!(app.viewport.row_offset, 0);
+    }
+
     // ── Marks (#31) ─────────────────────────────────────────────────────────
 
     #[test]
@@ -1244,6 +1828,16 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("Mark not set"));
+    }
+
+    #[test]
+    fn set_mark_rejects_non_lowercase() {
+        let mut app = App::new();
+        app.cursor = (5, 3);
+        app.process_action(Action::SetMark('A'));
+        assert!(!app.marks.contains_key(&'A'));
+        app.process_action(Action::SetMark('1'));
+        assert!(!app.marks.contains_key(&'1'));
     }
 
     // ── Jump list (#32) ─────────────────────────────────────────────────────
@@ -1300,6 +1894,21 @@ mod tests {
             direction: crate::action::SearchDirection::Forward,
         });
         assert_eq!(app.cursor, (5, 0));
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn marks_jump_records_jump() {
+        let mut app = App::new();
+        app.cursor = (5, 5);
+        app.process_action(Action::SetMark('a'));
+        app.cursor = (0, 0);
+        app.process_action(Action::JumpToMark {
+            name: 'a',
+            line_wise: false,
+        });
+        assert_eq!(app.cursor, (5, 5));
         app.process_action(Action::JumpBack);
         assert_eq!(app.cursor, (0, 0));
     }
@@ -1363,6 +1972,15 @@ mod tests {
         assert_eq!(app.cursor, (0, 0));
     }
 
+    #[test]
+    fn block_jump_down_at_bottom_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::BlockJumpDown);
+        assert_eq!(app.cursor, (0, 0));
+    }
+
     // ── gv reselect last visual (#37) ───────────────────────────────────────
 
     #[test]
@@ -1418,49 +2036,6 @@ mod tests {
             app.status_message.as_deref(),
             Some("No string under cursor")
         );
-    }
-
-    #[test]
-    fn block_jump_down_at_bottom_is_noop() {
-        let mut app = App::new();
-        app.process_action(Action::EditCell((0, 0), "x".into()));
-        app.cursor = (0, 0);
-        app.process_action(Action::BlockJumpDown);
-        assert_eq!(app.cursor, (0, 0));
-    }
-
-    #[test]
-    fn marks_jump_records_jump() {
-        let mut app = App::new();
-        app.cursor = (5, 5);
-        app.process_action(Action::SetMark('a'));
-        app.cursor = (0, 0);
-        app.process_action(Action::JumpToMark {
-            name: 'a',
-            line_wise: false,
-        });
-        assert_eq!(app.cursor, (5, 5));
-        app.process_action(Action::JumpBack);
-        assert_eq!(app.cursor, (0, 0));
-    }
-
-    #[test]
-    fn set_mark_rejects_non_lowercase() {
-        let mut app = App::new();
-        app.cursor = (5, 3);
-        app.process_action(Action::SetMark('A'));
-        assert!(!app.marks.contains_key(&'A'));
-        app.process_action(Action::SetMark('1'));
-        assert!(!app.marks.contains_key(&'1'));
-    }
-
-    #[test]
-    fn ctrl_y_scrolls_up_clamped_at_zero() {
-        let mut app = App::new();
-        app.viewport.visible_rows = 10;
-        app.viewport.row_offset = 0;
-        app.process_action(Action::ScrollLineUp);
-        assert_eq!(app.viewport.row_offset, 0);
     }
 
     #[test]

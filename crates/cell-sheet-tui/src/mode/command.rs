@@ -1,6 +1,29 @@
-use crate::action::Action;
+use crate::action::{Action, CommandKind, SearchDirection};
 use crossterm::event::{KeyCode, KeyEvent};
 use std::path::PathBuf;
+
+/// Turn a submitted command line into an `Action`. The prompt prefix
+/// (`:`, `/`, `?`) decides how `input` is parsed: ex-style command vs
+/// search pattern.
+pub fn submit(kind: CommandKind, input: &str) -> Action {
+    match kind {
+        CommandKind::Colon => parse_command(input),
+        CommandKind::Slash => parse_search(input, SearchDirection::Forward),
+        CommandKind::Question => parse_search(input, SearchDirection::Backward),
+    }
+}
+
+fn parse_search(input: &str, direction: SearchDirection) -> Action {
+    let pattern = input.trim();
+    if pattern.is_empty() {
+        Action::Noop
+    } else {
+        Action::Search {
+            pattern: pattern.to_string(),
+            direction,
+        }
+    }
+}
 
 pub fn parse_command(input: &str) -> Action {
     let input = input.trim();
@@ -180,6 +203,53 @@ mod tests {
         assert_eq!(
             handle_command_key(key(KeyCode::Char('q')), ""),
             CommandAction::InsertChar('q')
+        );
+    }
+
+    #[test]
+    fn submit_colon_routes_to_parse_command() {
+        assert_eq!(
+            submit(CommandKind::Colon, "q"),
+            Action::Quit { force: false }
+        );
+    }
+
+    #[test]
+    fn submit_slash_dispatches_forward_search() {
+        assert_eq!(
+            submit(CommandKind::Slash, "foo"),
+            Action::Search {
+                pattern: "foo".into(),
+                direction: SearchDirection::Forward,
+            }
+        );
+    }
+
+    #[test]
+    fn submit_question_dispatches_backward_search() {
+        assert_eq!(
+            submit(CommandKind::Question, "bar"),
+            Action::Search {
+                pattern: "bar".into(),
+                direction: SearchDirection::Backward,
+            }
+        );
+    }
+
+    #[test]
+    fn submit_empty_search_is_noop() {
+        assert_eq!(submit(CommandKind::Slash, ""), Action::Noop);
+        assert_eq!(submit(CommandKind::Question, "   "), Action::Noop);
+    }
+
+    #[test]
+    fn submit_search_trims_whitespace() {
+        assert_eq!(
+            submit(CommandKind::Slash, "  hello  "),
+            Action::Search {
+                pattern: "hello".into(),
+                direction: SearchDirection::Forward,
+            }
         );
     }
 }
