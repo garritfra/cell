@@ -12,7 +12,6 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SearchDirection {
     Forward,
-    #[allow(dead_code)]
     Backward,
 }
 
@@ -54,7 +53,6 @@ pub enum Action {
         col: usize,
         ascending: bool,
     },
-    #[allow(dead_code)]
     Search {
         pattern: String,
         direction: SearchDirection,
@@ -93,6 +91,9 @@ pub enum Action {
     JumpForward,
     BlockJumpDown,
     BlockJumpUp,
+    SearchCellValue {
+        backward: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

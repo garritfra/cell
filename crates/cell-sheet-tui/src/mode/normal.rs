@@ -106,6 +106,8 @@ impl NormalState {
             KeyCode::Char('/') => Action::ChangeMode(Mode::Command),
             KeyCode::Char('n') => Action::SearchNext,
             KeyCode::Char('N') => Action::SearchPrev,
+            KeyCode::Char('*') => Action::SearchCellValue { backward: false },
+            KeyCode::Char('#') => Action::SearchCellValue { backward: true },
             KeyCode::Tab => Action::JumpForward,
             KeyCode::Enter => Action::ChangeMode(Mode::Insert),
             _ => Action::Noop,
@@ -353,6 +355,26 @@ mod tests {
                 name: 'a',
                 line_wise: false
             }
+        );
+    }
+
+    #[test]
+    fn star_searches_cell_value_forward() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('*')), &app),
+            Action::SearchCellValue { backward: false }
+        );
+    }
+
+    #[test]
+    fn hash_searches_cell_value_backward() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('#')), &app),
+            Action::SearchCellValue { backward: true }
         );
     }
 

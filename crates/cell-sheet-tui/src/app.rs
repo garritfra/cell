@@ -580,6 +580,25 @@ impl App {
                     self.viewport.ensure_visible(self.cursor);
                 }
             }
+            Action::SearchCellValue { backward } => {
+                let pattern = self
+                    .sheet
+                    .get_cell(self.cursor)
+                    .map(|c| c.value.to_string());
+                if let Some(p) = pattern.filter(|s| !s.is_empty()) {
+                    let direction = if backward {
+                        crate::action::SearchDirection::Backward
+                    } else {
+                        crate::action::SearchDirection::Forward
+                    };
+                    self.process_action(Action::Search {
+                        pattern: p,
+                        direction,
+                    });
+                } else {
+                    self.status_message = Some("No string under cursor".into());
+                }
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -1319,6 +1338,41 @@ mod tests {
         app.cursor = (0, 0);
         app.process_action(Action::BlockJumpUp);
         assert_eq!(app.cursor, (0, 0));
+    }
+
+    // ── * / # search current cell value (#36) ───────────────────────────────
+
+    #[test]
+    fn star_searches_for_current_cell_value() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::EditCell((3, 2), "foo".into()));
+        app.cursor = (0, 0);
+        app.process_action(Action::SearchCellValue { backward: false });
+        assert_eq!(app.cursor, (3, 2));
+        assert_eq!(app.search_pattern.as_deref(), Some("foo"));
+    }
+
+    #[test]
+    fn hash_searches_backward_for_current_cell_value() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::EditCell((3, 2), "foo".into()));
+        app.cursor = (3, 2);
+        app.process_action(Action::SearchCellValue { backward: true });
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn star_on_empty_cell_is_noop() {
+        let mut app = App::new();
+        app.cursor = (0, 0);
+        app.process_action(Action::SearchCellValue { backward: false });
+        assert_eq!(app.search_pattern, None);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No string under cursor")
+        );
     }
 
     #[test]
