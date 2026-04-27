@@ -54,8 +54,11 @@ Cargo workspace with two crates:
 ### Formula engine pipeline (`cell-sheet-core`)
 
 `token.rs` (lexer) → `parser.rs` (recursive descent → `Expr` AST) →
-`eval.rs` (tree-walk evaluator) → `functions.rs` (built-in functions: SUM,
-AVERAGE, COUNT, MIN, MAX, IF).
+`eval.rs` (tree-walk evaluator) → `functions.rs` (built-in function
+dispatcher). The authoritative list of supported functions lives in
+`functions.rs`; the user-facing list lives in
+`help/entries.rs::FORMULA_ENTRIES`. These two must stay in sync — see the
+Help system section below.
 
 ### Dependency graph (`deps.rs`)
 
@@ -68,9 +71,20 @@ errors.
 
 Each mode has its own input handler under `crates/cell-sheet-tui/src/mode/`:
 `normal.rs` (with multi-key sequence support like `gg`, `dd`), `insert.rs`,
-`visual.rs`, `command.rs` (`:` commands and `/` search). Add new key
-sequences in the appropriate mode handler rather than threading them through
-`app.rs`.
+`visual.rs`, `command.rs` (`:` commands and `/` search), and `help.rs` (the
+modal help viewer entered via `:help`). Add new key sequences in the
+appropriate mode handler rather than threading them through `app.rs`.
+
+### Help system (`cell-sheet-core::help`)
+
+The in-app help screen and `:help <topic>` are data-driven. `HelpRegistry`
+(in `crates/cell-sheet-core/src/help/mod.rs`) is built from the static
+slices in `crates/cell-sheet-core/src/help/entries.rs`
+(`NORMAL_ENTRIES`, `INSERT_ENTRIES`, `VISUAL_ENTRIES`, `COMMAND_ENTRIES`,
+`FORMULA_ENTRIES`). The TUI's `render/help.rs` renders directly from that
+registry — if an entry is missing, the help screen and `:help` will silently
+omit it. Treat `entries.rs` as a first-class part of any user-visible
+change, not as documentation that lags behind.
 
 ## Conventions
 
@@ -84,6 +98,11 @@ sequences in the appropriate mode handler rather than threading them through
 - The core crate must remain independent of any TUI dependency. New
   evaluation, parsing, or storage logic belongs in `cell-sheet-core`; new
   rendering, input, or terminal logic belongs in `cell-sheet-tui`.
+- Every user-visible keybinding, `:` command, and built-in formula function
+  must have a corresponding `HelpEntry` in
+  `crates/cell-sheet-core/src/help/entries.rs`. The help renderer reads that
+  registry as its single source of truth — if it isn't there, `:help` will
+  lie to the user.
 
 ## Working in this repo as an agent
 
@@ -100,6 +119,11 @@ sequences in the appropriate mode handler rather than threading them through
 - **Add a test for any behavior change.** Bug fixes need a regression test
   that fails before the fix and passes after. Prefer tests in
   `cell-sheet-core` whenever possible — they don't need a terminal.
+- **Adding a new keybinding, `:` command, or formula function is a
+  three-file change**: the handler/dispatcher (in `mode/*.rs` or
+  `formula/functions.rs`), the matching `HelpEntry` in `help/entries.rs`,
+  and a `CHANGELOG.md` entry under `## Unreleased` if it's user-visible.
+  Skipping the help entry is a regression even if the feature works.
 - Don't suppress clippy warnings globally. If a lint is genuinely wrong for
   a specific case, use a local `#[allow(...)]` with a short comment.
 - Don't add comments that narrate what the code does; comments should only
