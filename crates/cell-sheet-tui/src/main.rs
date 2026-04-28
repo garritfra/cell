@@ -53,7 +53,10 @@ fn parse_delimiter(c: char) -> Result<u8, String> {
             "delimiter must be a single ASCII character, got {c:?}"
         ));
     }
-    if c.is_alphanumeric() || c == '"' || c == '\n' || c == '\r' {
+    // Reject control characters (< 0x20 except tab), space, and double-quote
+    // (reserved as the CSV quoting character). Tab is allowed: it is the
+    // standard TSV delimiter.
+    if c.is_alphanumeric() || c == '"' || c == ' ' || ((c as u8) < 0x20 && c != '\t') {
         return Err(format!("'{c}' is not a valid field delimiter"));
     }
     Ok(c as u8)

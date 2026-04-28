@@ -33,8 +33,14 @@ pub fn parse_command(input: &str) -> Action {
     if let Some(stripped) = input.strip_prefix("set delimiter=") {
         let mut chars = stripped.chars();
         return match (chars.next(), chars.next()) {
+            // Tab (0x09) is the standard TSV delimiter and is explicitly
+            // allowed even though it is a control character (< 0x20).
             (Some(c), None)
-                if c.is_ascii() && !c.is_alphanumeric() && c != '"' && c != '\n' && c != '\r' =>
+                if c.is_ascii()
+                    && !c.is_alphanumeric()
+                    && c != '"'
+                    && c != ' '
+                    && ((c as u8) >= 0x20 || c == '\t') =>
             {
                 Action::SetDelimiter(c as u8)
             }
@@ -263,6 +269,22 @@ mod tests {
     fn parse_set_delimiter_quote_is_error() {
         assert!(matches!(
             parse_command("set delimiter=\""),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_space_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter= "),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_nul_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=\0"),
             Action::SetStatus(_)
         ));
     }
