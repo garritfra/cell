@@ -320,6 +320,8 @@ impl App {
                 }
             }
             Action::ForceSave(path_opt) => {
+                // ForceSave intentionally bypasses both the formula-flatten warning and the
+                // non-standard-delimiter warning. The user has explicitly opted in via :w!
                 let path = path_opt.or(self.file_path.clone());
                 if let Some(path) = path {
                     let format = Self::format_from_path(&path);
@@ -2097,7 +2099,6 @@ mod tests {
         // Use a non-existent path so the actual write would fail, but the delimiter
         // warning must fire *before* the write attempt.
         app.file_path = Some(std::path::PathBuf::from("data.csv"));
-        app.file_format = FileFormat::Csv;
         app.delimiter = b'|';
         app.process_action(Action::Save(None));
         let msg = app.status_message.as_deref().unwrap_or("");
@@ -2111,7 +2112,6 @@ mod tests {
     fn save_tsv_with_non_tab_delimiter_warns() {
         let mut app = App::new();
         app.file_path = Some(std::path::PathBuf::from("data.tsv"));
-        app.file_format = FileFormat::Tsv;
         app.delimiter = b'|';
         app.process_action(Action::Save(None));
         let msg = app.status_message.as_deref().unwrap_or("");
@@ -2128,7 +2128,6 @@ mod tests {
         // The write may fail for other reasons (path doesn't exist), but the
         // error message should NOT contain "Non-standard delimiter".
         app.file_path = Some(std::path::PathBuf::from("data.csv"));
-        app.file_format = FileFormat::Csv;
         app.delimiter = b',';
         app.process_action(Action::Save(None));
         let msg = app.status_message.as_deref().unwrap_or("");
@@ -2142,7 +2141,6 @@ mod tests {
     fn force_save_csv_with_non_comma_delimiter_skips_warning() {
         let mut app = App::new();
         app.file_path = Some(std::path::PathBuf::from("data.csv"));
-        app.file_format = FileFormat::Csv;
         app.delimiter = b'|';
         // ForceSave must NOT produce the delimiter warning.
         // (The write may produce an I/O error if the path can't be written, which is fine.)
