@@ -37,6 +37,26 @@ fn cell_path(dir: &TempDir, name: &str) -> PathBuf {
     dir.path().join(name)
 }
 
+fn run_with_stdin(args: &[&str], stdin_data: &[u8]) -> Output {
+    use std::io::Write as _;
+    use std::process::Stdio;
+    let mut child = Command::new(BIN)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn cell binary");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(stdin_data)
+        .unwrap();
+    drop(child.stdin.take());
+    child.wait_with_output().expect("failed to wait on cell")
+}
+
 #[test]
 fn read_single_cell_prints_value() {
     let dir = tempfile::tempdir().unwrap();
@@ -289,4 +309,46 @@ fn read_tsv_without_delimiter_flag() {
     let out = run(&[path.to_str().unwrap(), "--read", "C2"]);
     assert!(out.status.success(), "stderr: {}", stderr(&out));
     assert_eq!(stdout(&out), "30\n");
+}
+
+#[test]
+fn stdin_read_single_cell() {
+    let out = run_with_stdin(&["--read", "A1"], b"10,20\n30,40\n");
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "10\n");
+}
+
+#[test]
+fn stdin_read_range() {
+    let out = run_with_stdin(&["--read", "A1:B2"], b"10,20\n30,40\n");
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "10\t20\n30\t40\n");
+}
+
+#[test]
+fn stdin_eval_sum() {
+    let out = run_with_stdin(&["--eval", "=SUM(A1:A4)"], b"1\n2\n3\n4\n");
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "10\n");
+}
+
+#[test]
+fn stdin_tsv_auto_detected() {
+    let out = run_with_stdin(&["--read", "B1"], b"hello\tworld\n");
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "world\n");
+}
+
+#[test]
+fn stdin_with_explicit_delimiter() {
+    let out = run_with_stdin(&["--delimiter", "|", "--read", "B1"], b"a|b|c\n");
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "b\n");
+}
+
+#[test]
+fn stdin_write_errors_without_file() {
+    let out = run_with_stdin(&["--write", "A1", "99"], b"10,20\n");
+    assert!(!out.status.success());
+    assert!(!stderr(&out).is_empty());
 }
