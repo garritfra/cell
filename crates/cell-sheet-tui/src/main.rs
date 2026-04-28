@@ -181,7 +181,7 @@ fn run_loop(
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                
+
                 app.status_message = None;
 
                 let action = match app.mode {
