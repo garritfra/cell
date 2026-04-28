@@ -100,7 +100,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: rust-lang/crates-io-auth-action@v1
+      - uses: rust-lang/crates-io-auth-action@v1.0.4
         id: auth
 
       - name: Publish cell-sheet-core
