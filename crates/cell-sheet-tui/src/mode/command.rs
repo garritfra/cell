@@ -27,6 +27,24 @@ fn parse_search(input: &str, direction: SearchDirection) -> Action {
 
 pub fn parse_command(input: &str) -> Action {
     let input = input.trim_start();
+
+    // Handle before trimming the end: the delimiter character may itself be
+    // whitespace (e.g. Tab), so trim_end() must not run before this check.
+    if let Some(stripped) = input.strip_prefix("set delimiter=") {
+        let mut chars = stripped.chars();
+        return match (chars.next(), chars.next()) {
+            (Some(c), None)
+                if c.is_ascii() && !c.is_alphanumeric() && c != '"' && c != '\n' && c != '\r' =>
+            {
+                Action::SetDelimiter(c as u8)
+            }
+            _ => Action::Noop,
+        };
+    }
+
+    // For all other commands, trailing whitespace is ignored (Vim behaviour).
+    let input = input.trim_end();
+
     if input == "q" {
         Action::Quit { force: false }
     } else if input == "q!" {
@@ -54,14 +72,6 @@ pub fn parse_command(input: &str) -> Action {
             Action::ShowHelp(None)
         } else {
             Action::ShowHelp(Some(topic.to_string()))
-        }
-    } else if let Some(stripped) = input.strip_prefix("set delimiter=") {
-        let mut chars = stripped.chars();
-        match (chars.next(), chars.next()) {
-            (Some(c), None) if c.is_ascii() && !c.is_alphanumeric() => {
-                Action::SetDelimiter(c as u8)
-            }
-            _ => Action::Noop,
         }
     } else {
         Action::Noop
@@ -223,6 +233,19 @@ mod tests {
     #[test]
     fn parse_set_delimiter_non_ascii_is_noop() {
         assert_eq!(parse_command("set delimiter=€"), Action::Noop);
+    }
+
+    #[test]
+    fn parse_quit_with_trailing_space() {
+        // Trailing whitespace must be tolerated (Vim behaviour)
+        assert_eq!(parse_command("q "), Action::Quit { force: false });
+        assert_eq!(parse_command("wq "), Action::Save(None));
+    }
+
+    #[test]
+    fn parse_set_delimiter_quote_is_noop() {
+        // Double-quote must be rejected — it is the CSV quoting character
+        assert_eq!(parse_command("set delimiter=\""), Action::Noop);
     }
 
     fn key(code: KeyCode) -> KeyEvent {
