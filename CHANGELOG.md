@@ -22,7 +22,8 @@
   `csv_load_100k`, `formula_recalc_10k`, `mark_dirty_chain`,
   `recalculate_wide_dag`, `range_sum_10k`. CI compiles the suite on every
   push to prevent API-breakage regressions. See `BENCH.md` for how to run
-  and record results. Closes #7.
+  and record results
+  ([#61](https://github.com/garritfra/cell/pull/61)).
 
 ## 0.3.1 (2026-04-28)
 
