@@ -535,6 +535,7 @@ impl App {
                     recalculate(&mut self.sheet, &self.deps);
                     self.dirty = true;
                 }
+                self.last_change = Some(Action::ClearRange { start, end });
             }
             Action::DeleteRow { start, count } => {
                 let count = count.max(1);
@@ -682,6 +683,11 @@ impl App {
                         recalculate(&mut self.sheet, &self.deps);
                         self.dirty = true;
                     }
+                }
+                if is_after {
+                    self.last_change = Some(Action::Paste(pos));
+                } else {
+                    self.last_change = Some(Action::PasteBefore(pos));
                 }
             }
             Action::NextNonEmpty(count) => {
@@ -2675,5 +2681,38 @@ mod tests {
             app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
             Some("x")
         );
+    }
+
+    #[test]
+    fn dot_repeats_paste() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        app.cursor = (0, 2);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_clear_range_with_same_shape() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::EditCell((1, 0), "c".into()));
+        app.process_action(Action::EditCell((1, 1), "d".into()));
+        // Clear 1×2 range at row 0
+        app.process_action(Action::ClearRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        // Dot at (1, 0) should clear (1,0)–(1,1)
+        app.cursor = (1, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+        assert!(app.sheet.get_cell((1, 1)).is_none());
     }
 }
