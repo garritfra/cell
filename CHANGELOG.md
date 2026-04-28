@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `:help` and the `:help <topic>` lookup now know about the 0.3.0 viewport
+  motions (`zz` / `zt` / `zb`, `H` / `M` / `L`, `Ctrl-e` / `Ctrl-y`), marks
+  (`m{a-z}` / `'{a-z}` / `` `{a-z} ``), the jump list (`Ctrl-o` / `Ctrl-i` /
+  Tab), block-jump motions (`{` / `}`), `*` / `#` cell-value search, and
+  `gv`. Also added entries for `c` (change cell) and `V` (Visual Line mode),
+  which had been missing since 0.1.0. The features were always implemented
+  in `mode/normal.rs`; they just weren't reachable through the in-app help.
+
 ## 0.4.0 (2026-04-28)
 
 ### Added

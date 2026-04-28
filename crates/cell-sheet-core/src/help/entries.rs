@@ -239,6 +239,162 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         detail: "Move the cursor up by one full page.",
     },
     HelpEntry {
+        tags: &["Ctrl+E"],
+        category: HelpCategory::Normal,
+        summary: "Scroll viewport down one row",
+        detail: "Scroll the viewport down one row without moving the cursor.\n\
+                 If the cursor would scroll off the top, it stays pinned to\n\
+                 the top visible row.",
+    },
+    HelpEntry {
+        tags: &["Ctrl+Y"],
+        category: HelpCategory::Normal,
+        summary: "Scroll viewport up one row",
+        detail: "Scroll the viewport up one row without moving the cursor.\n\
+                 If the cursor would scroll off the bottom, it stays pinned\n\
+                 to the bottom visible row.",
+    },
+    HelpEntry {
+        tags: &["zz"],
+        category: HelpCategory::Normal,
+        summary: "Recenter viewport on cursor",
+        detail: "Scroll the viewport so the cursor sits at the vertical\n\
+                 center of the visible rows. Cursor position is unchanged.",
+    },
+    HelpEntry {
+        tags: &["zt"],
+        category: HelpCategory::Normal,
+        summary: "Scroll cursor to top of viewport",
+        detail: "Scroll the viewport so the cursor row becomes the top\n\
+                 visible row. Cursor position is unchanged.",
+    },
+    HelpEntry {
+        tags: &["zb"],
+        category: HelpCategory::Normal,
+        summary: "Scroll cursor to bottom of viewport",
+        detail: "Scroll the viewport so the cursor row becomes the bottom\n\
+                 visible row. Cursor position is unchanged.",
+    },
+    HelpEntry {
+        tags: &["H"],
+        category: HelpCategory::Normal,
+        summary: "Cursor to top of viewport",
+        detail: "Move the cursor to the topmost visible row, keeping the\n\
+                 current column. Viewport is unchanged.",
+    },
+    HelpEntry {
+        tags: &["M"],
+        category: HelpCategory::Normal,
+        summary: "Cursor to middle of viewport",
+        detail: "Move the cursor to the middle visible row, keeping the\n\
+                 current column. Viewport is unchanged.",
+    },
+    HelpEntry {
+        tags: &["L"],
+        category: HelpCategory::Normal,
+        summary: "Cursor to bottom of viewport",
+        detail: "Move the cursor to the bottommost visible row, keeping the\n\
+                 current column. Viewport is unchanged.",
+    },
+    HelpEntry {
+        tags: &["m", "mark"],
+        category: HelpCategory::Normal,
+        summary: "Set mark (m{a-z})",
+        detail: "After pressing m, the next lowercase letter records the\n\
+                 current cursor position as a named mark. Marks are\n\
+                 session-only. Jump back with '{a-z} (line-wise) or\n\
+                 `{a-z} (exact cell).",
+    },
+    HelpEntry {
+        tags: &["'"],
+        category: HelpCategory::Normal,
+        summary: "Jump to mark (line-wise)",
+        detail: "After pressing ', the next lowercase letter jumps the\n\
+                 cursor to the row of the matching mark, at column A.\n\
+                 If the mark is unset, status reports `E20: Mark not set`.",
+    },
+    HelpEntry {
+        tags: &["`", "backtick"],
+        category: HelpCategory::Normal,
+        summary: "Jump to mark (exact cell)",
+        detail: "After pressing `, the next lowercase letter jumps the\n\
+                 cursor to the exact cell of the matching mark.\n\
+                 If the mark is unset, status reports `E20: Mark not set`.",
+    },
+    HelpEntry {
+        tags: &["Ctrl+O"],
+        category: HelpCategory::Normal,
+        summary: "Jump back in jump list",
+        detail: "Move backward through the jump list, which records cursor\n\
+                 positions across long-distance motions (gg, G, marks,\n\
+                 search). Pairs with Ctrl+I / Tab to jump forward. The\n\
+                 jump list is capped at 100 entries.",
+    },
+    HelpEntry {
+        tags: &["Ctrl+I", "Tab"],
+        category: HelpCategory::Normal,
+        summary: "Jump forward in jump list",
+        detail: "Move forward through the jump list. Pairs with Ctrl+O\n\
+                 to jump back. Mid-stack jumps truncate the forward history.",
+    },
+    HelpEntry {
+        tags: &["{"],
+        category: HelpCategory::Normal,
+        summary: "Block jump up in column",
+        detail: "Jump to the previous block boundary in the current column,\n\
+                 mirroring vim's paragraph motion. From a non-empty cell,\n\
+                 lands on the first empty row above the current block;\n\
+                 from an empty cell, lands on the next non-empty row above.",
+    },
+    HelpEntry {
+        tags: &["}"],
+        category: HelpCategory::Normal,
+        summary: "Block jump down in column",
+        detail: "Jump to the next block boundary in the current column,\n\
+                 mirroring vim's paragraph motion. From a non-empty cell,\n\
+                 lands on the first empty row below the current block;\n\
+                 from an empty cell, lands on the next non-empty row below.",
+    },
+    HelpEntry {
+        tags: &["*"],
+        category: HelpCategory::Normal,
+        summary: "Search current cell value forward",
+        detail: "Treat the current cell's displayed value as the search\n\
+                 pattern and jump to the next matching cell. The pattern\n\
+                 is stored, so n / N continue stepping through matches.",
+    },
+    HelpEntry {
+        tags: &["#"],
+        category: HelpCategory::Normal,
+        summary: "Search current cell value backward",
+        detail: "Treat the current cell's displayed value as the search\n\
+                 pattern and jump to the previous matching cell. The pattern\n\
+                 is stored, so n / N continue stepping through matches.",
+    },
+    HelpEntry {
+        tags: &["gv"],
+        category: HelpCategory::Normal,
+        summary: "Re-enter previous visual selection",
+        detail: "Re-enter Visual mode with the same anchor, cursor, and\n\
+                 visual kind (Character / Line / Block) as the last\n\
+                 selection. No-op if no previous selection exists.",
+    },
+    HelpEntry {
+        tags: &["c"],
+        category: HelpCategory::Normal,
+        summary: "Change cell",
+        detail: "Clear the current cell and enter Insert mode to type its new\n\
+                 content. Equivalent to x followed by i.",
+    },
+    HelpEntry {
+        tags: &["V"],
+        category: HelpCategory::Normal,
+        summary: "Enter Visual Line mode",
+        detail: "Start full-row (line-wise) visual selection from the\n\
+                 current row. Use j/k to extend; press d/y/c to act on the\n\
+                 selected rows.",
+    },
+    HelpEntry {
         tags: &["i", "a"],
         category: HelpCategory::Normal,
         summary: "Enter Insert mode",
