@@ -280,3 +280,13 @@ fn invalid_delimiter_exits_with_code_2() {
     assert_eq!(out.status.code(), Some(2));
     assert!(!stderr(&out).is_empty());
 }
+
+#[test]
+fn read_tsv_without_delimiter_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_csv(&dir, "data.tsv", "a\tb\tc\n10\t20\t30\n");
+
+    let out = run(&[path.to_str().unwrap(), "--read", "C2"]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "30\n");
+}

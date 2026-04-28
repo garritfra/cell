@@ -123,11 +123,7 @@ fn load(
     delimiter: u8,
 ) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
     let mut sheet = match format {
-        Format::Csv => {
-            let data = std::fs::read(path)?;
-            csv_io::read_csv(data.as_slice(), delimiter)?
-        }
-        Format::Tsv => {
+        Format::Csv | Format::Tsv => {
             let file = std::fs::File::open(path)?;
             csv_io::read_csv(file, delimiter)?
         }
