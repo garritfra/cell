@@ -15,6 +15,10 @@ pub struct StatusBar<'a> {
     pub dirty: bool,
     pub file_name: Option<&'a str>,
     pub message: Option<&'a str>,
+    /// Vim's `showcmd`-style indicator of the partially-typed command:
+    /// e.g. `5`, `5d`, or `g` while the user is mid-sequence. Rendered
+    /// to the right of the file info, before the row/col readout.
+    pub partial_command: Option<&'a str>,
 }
 
 impl<'a> Widget for StatusBar<'a> {
@@ -88,6 +92,24 @@ impl<'a> Widget for StatusBar<'a> {
         let right_x = area.x + area.width.saturating_sub(right.len() as u16);
         if right_x > info_x + file_info.len() as u16 {
             buf.set_string(right_x, area.y, &right, style);
+        }
+
+        // Vim's `showcmd`: render any partial command (count + op) just
+        // before the right-side readout. A small bold accent makes it
+        // visually distinct from the file info on the left.
+        if let Some(cmd) = self.partial_command {
+            if !cmd.is_empty() {
+                let cmd_str = format!(" {} ", cmd);
+                let cmd_w = cmd_str.len() as u16;
+                let cmd_x = right_x.saturating_sub(cmd_w + 1);
+                if cmd_x > info_x + file_info.len() as u16 {
+                    let cmd_style = Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::White)
+                        .add_modifier(Modifier::BOLD);
+                    buf.set_string(cmd_x, area.y, &cmd_str, cmd_style);
+                }
+            }
         }
     }
 }

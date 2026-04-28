@@ -2,40 +2,61 @@ use super::{HelpCategory, HelpEntry};
 
 pub static NORMAL_ENTRIES: &[HelpEntry] = &[
     HelpEntry {
+        tags: &["count", "[count]", "N"],
+        category: HelpCategory::Normal,
+        summary: "Numeric count prefix",
+        detail: "Type digits before a motion or operator to repeat or scale it,\n\
+                 vim-style. Examples: 5j moves 5 rows down, 10G jumps to row 10,\n\
+                 3dd deletes 3 rows, 4yy yanks 4 rows, 2w hops 2 non-empty cells.\n\
+                 The count is shown in the status line as you type.\n\n\
+                 0 alone goes to the first column; only after a non-zero digit\n\
+                 does 0 extend the count (so 10j really moves 10 rows).\n\n\
+                 Esc cancels a partially-typed count. Counts apply to:\n\
+                 h j k l, Up/Down/Left/Right, w b, gg G, dd yy.",
+    },
+    HelpEntry {
         tags: &["h"],
         category: HelpCategory::Normal,
-        summary: "Move cursor left",
-        detail: "Move the cursor one column to the left. Stops at column A.\nAlias: Left arrow",
+        summary: "Move cursor left ([count]h)",
+        detail: "Move the cursor one column to the left. Stops at column A.\n\
+                 With a count prefix, moves [count] columns.\n\
+                 Alias: Left arrow",
     },
     HelpEntry {
         tags: &["j"],
         category: HelpCategory::Normal,
-        summary: "Move cursor down",
-        detail: "Move the cursor one row down.\nAlias: Down arrow",
+        summary: "Move cursor down ([count]j)",
+        detail: "Move the cursor one row down. With a count prefix, moves\n\
+                 [count] rows.\nAlias: Down arrow",
     },
     HelpEntry {
         tags: &["k"],
         category: HelpCategory::Normal,
-        summary: "Move cursor up",
-        detail: "Move the cursor one row up. Stops at row 1.\nAlias: Up arrow",
+        summary: "Move cursor up ([count]k)",
+        detail: "Move the cursor one row up. Stops at row 1. With a count\n\
+                 prefix, moves [count] rows.\nAlias: Up arrow",
     },
     HelpEntry {
         tags: &["l"],
         category: HelpCategory::Normal,
-        summary: "Move cursor right",
-        detail: "Move the cursor one column to the right.\nAlias: Right arrow",
+        summary: "Move cursor right ([count]l)",
+        detail: "Move the cursor one column to the right. With a count prefix,\n\
+                 moves [count] columns.\nAlias: Right arrow",
     },
     HelpEntry {
         tags: &["gg"],
         category: HelpCategory::Normal,
-        summary: "Go to first row",
-        detail: "Move the cursor to row 1, keeping the current column.",
+        summary: "Go to first row / row N ([count]gg)",
+        detail: "Move the cursor to row 1, keeping the current column.\n\
+                 With a count prefix, jumps to row [count] (1-indexed).",
     },
     HelpEntry {
         tags: &["G"],
         category: HelpCategory::Normal,
-        summary: "Go to last row",
-        detail: "Move the cursor to the last row with data, keeping the current column.",
+        summary: "Go to last row / row N ([count]G)",
+        detail: "Move the cursor to the last row with data, keeping the\n\
+                 current column. With a count prefix, jumps to row [count]\n\
+                 (1-indexed) instead.",
     },
     HelpEntry {
         tags: &["0"],
@@ -52,26 +73,35 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
     HelpEntry {
         tags: &["w"],
         category: HelpCategory::Normal,
-        summary: "Next non-empty cell",
-        detail: "Jump to the next non-empty cell to the right in the current row.",
+        summary: "Next non-empty cell ([count]w)",
+        detail: "Jump to the next non-empty cell to the right in the current\n\
+                 row. With a count prefix, hops [count] non-empty cells.",
     },
     HelpEntry {
         tags: &["b"],
         category: HelpCategory::Normal,
-        summary: "Previous non-empty cell",
-        detail: "Jump to the previous non-empty cell to the left in the current row.",
+        summary: "Previous non-empty cell ([count]b)",
+        detail: "Jump to the previous non-empty cell to the left in the\n\
+                 current row. With a count prefix, hops [count] non-empty\n\
+                 cells back.",
     },
     HelpEntry {
         tags: &["dd"],
         category: HelpCategory::Normal,
-        summary: "Delete current row",
-        detail: "Deletes all cells in the current row. The row contents are stored\nin the register and can be pasted with p or P. Undoable with u.",
+        summary: "Delete current row ([count]dd)",
+        detail: "Deletes all cells in the current row. With a count prefix,\n\
+                 deletes [count] rows starting at the cursor; the deleted\n\
+                 rows are stored line-wise in the register and can be\n\
+                 pasted as a block with p (below) or P (above). Undoable\n\
+                 with u.",
     },
     HelpEntry {
         tags: &["yy"],
         category: HelpCategory::Normal,
-        summary: "Yank current row",
-        detail: "Copies all cells in the current row to the register.\nPaste with p (below) or P (above).",
+        summary: "Yank current row ([count]yy)",
+        detail: "Copies all cells in the current row to the register. With a\n\
+                 count prefix, yanks [count] rows starting at the cursor.\n\
+                 Paste with p (below) or P (above).",
     },
     HelpEntry {
         tags: &["x"],

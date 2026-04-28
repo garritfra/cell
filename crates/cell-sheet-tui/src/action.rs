@@ -39,7 +39,11 @@ impl CommandKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Noop,
-    MoveCursor(Direction),
+    /// Move the cursor `count` cells in `dir`. Count of 1 is the default
+    /// single-step move; counts above 1 implement vim's `[count]hjkl`
+    /// semantics. The handler clamps to grid bounds with saturating
+    /// arithmetic and updates the viewport once at the end.
+    MoveCursor(Direction, usize),
     #[allow(dead_code)]
     MoveCursorTo(CellPos),
     EditCell(CellPos, String),
@@ -114,12 +118,21 @@ pub enum Action {
     HalfPageUp,
     GotoFirstRow,
     GotoLastRow,
+    /// Jump to a specific 1-indexed row, vim's `[count]G` / `[count]gg`.
+    /// The handler clamps to `[1, row_count]`.
+    GotoRow(usize),
     GotoFirstCol,
     GotoLastCol,
-    NextNonEmpty,
-    PrevNonEmpty,
-    DeleteRow(usize),
-    YankRow(usize),
+    NextNonEmpty(usize),
+    PrevNonEmpty(usize),
+    DeleteRow {
+        start: usize,
+        count: usize,
+    },
+    YankRow {
+        start: usize,
+        count: usize,
+    },
     ShowHelp(Option<String>),
     ScrollCursorTop,
     ScrollCursorCenter,

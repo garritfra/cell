@@ -5,6 +5,10 @@ use cell_sheet_core::model::{col_index_to_label, col_label_to_index};
 pub enum Register {
     Cell(String),
     Row(Vec<String>),
+    /// Line-wise multi-row register produced by `[count]dd` / `[count]yy`
+    /// when count > 1. Pastes line-wise (below for `p`, above for `P`),
+    /// like vim's linewise register.
+    Rows(Vec<Vec<String>>),
     Block(Vec<Vec<String>>),
 }
 

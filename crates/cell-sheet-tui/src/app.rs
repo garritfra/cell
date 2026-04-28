@@ -122,13 +122,14 @@ impl App {
     pub fn process_action(&mut self, action: Action) {
         match action {
             Action::Noop => {}
-            Action::MoveCursor(dir) => {
+            Action::MoveCursor(dir, count) => {
+                let count = count.max(1);
                 let (row, col) = self.cursor;
                 self.cursor = match dir {
-                    Direction::Up => (row.saturating_sub(1), col),
-                    Direction::Down => (row + 1, col),
-                    Direction::Left => (row, col.saturating_sub(1)),
-                    Direction::Right => (row, col + 1),
+                    Direction::Up => (row.saturating_sub(count), col),
+                    Direction::Down => (row.saturating_add(count), col),
+                    Direction::Left => (row, col.saturating_sub(count)),
+                    Direction::Right => (row, col.saturating_add(count)),
                 };
                 self.viewport.ensure_visible(self.cursor);
             }
@@ -249,6 +250,12 @@ impl App {
                     0
                 };
                 self.cursor = (last, self.cursor.1);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::GotoRow(target_1based) => {
+                self.record_jump();
+                let row = target_1based.saturating_sub(1);
+                self.cursor = (row, self.cursor.1);
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::GotoFirstCol => {
@@ -435,17 +442,36 @@ impl App {
                     self.register = Some(Register::Cell(cell.raw.clone()));
                 }
             }
-            Action::YankRow(row) => {
-                let mut cells = Vec::new();
-                for col in 0..self.sheet.col_count {
-                    let raw = self
-                        .sheet
-                        .get_cell((row, col))
-                        .map(|c| c.raw.clone())
-                        .unwrap_or_default();
-                    cells.push(raw);
+            Action::YankRow { start, count } => {
+                let count = count.max(1);
+                let cols = self.sheet.col_count;
+                if count == 1 {
+                    let mut cells = Vec::with_capacity(cols);
+                    for col in 0..cols {
+                        let raw = self
+                            .sheet
+                            .get_cell((start, col))
+                            .map(|c| c.raw.clone())
+                            .unwrap_or_default();
+                        cells.push(raw);
+                    }
+                    self.register = Some(Register::Row(cells));
+                } else {
+                    let mut rows: Vec<Vec<String>> = Vec::with_capacity(count);
+                    for r in start..start.saturating_add(count) {
+                        let mut row_cells = Vec::with_capacity(cols);
+                        for col in 0..cols {
+                            let raw = self
+                                .sheet
+                                .get_cell((r, col))
+                                .map(|c| c.raw.clone())
+                                .unwrap_or_default();
+                            row_cells.push(raw);
+                        }
+                        rows.push(row_cells);
+                    }
+                    self.register = Some(Register::Rows(rows));
                 }
-                self.register = Some(Register::Row(cells));
             }
             Action::YankRange { start, end } => {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
@@ -491,22 +517,45 @@ impl App {
                     self.dirty = true;
                 }
             }
-            Action::DeleteRow(row) => {
-                let mut cells = Vec::new();
+            Action::DeleteRow { start, count } => {
+                let count = count.max(1);
+                let cols = self.sheet.col_count;
                 let mut changes = Vec::new();
-                for col in 0..self.sheet.col_count {
-                    let raw = self
-                        .sheet
-                        .get_cell((row, col))
-                        .map(|c| c.raw.clone())
-                        .unwrap_or_default();
-                    if !raw.is_empty() {
-                        changes.push(((row, col), raw.clone(), String::new()));
-                        self.sheet.clear_cell((row, col));
+                if count == 1 {
+                    let mut cells = Vec::with_capacity(cols);
+                    for col in 0..cols {
+                        let raw = self
+                            .sheet
+                            .get_cell((start, col))
+                            .map(|c| c.raw.clone())
+                            .unwrap_or_default();
+                        if !raw.is_empty() {
+                            changes.push(((start, col), raw.clone(), String::new()));
+                            self.sheet.clear_cell((start, col));
+                        }
+                        cells.push(raw);
                     }
-                    cells.push(raw);
+                    self.register = Some(Register::Row(cells));
+                } else {
+                    let mut rows: Vec<Vec<String>> = Vec::with_capacity(count);
+                    for r in start..start.saturating_add(count) {
+                        let mut row_cells = Vec::with_capacity(cols);
+                        for col in 0..cols {
+                            let raw = self
+                                .sheet
+                                .get_cell((r, col))
+                                .map(|c| c.raw.clone())
+                                .unwrap_or_default();
+                            if !raw.is_empty() {
+                                changes.push(((r, col), raw.clone(), String::new()));
+                                self.sheet.clear_cell((r, col));
+                            }
+                            row_cells.push(raw);
+                        }
+                        rows.push(row_cells);
+                    }
+                    self.register = Some(Register::Rows(rows));
                 }
-                self.register = Some(Register::Row(cells));
                 if !changes.is_empty() {
                     self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
                     self.dirty = true;
@@ -553,6 +602,35 @@ impl App {
                                 }
                             }
                         }
+                        Register::Rows(rows) => {
+                            // Multi-row line-wise (3dd/3yy): p pastes the whole
+                            // block starting at the line below; P starts at the
+                            // current line. Cursor column is ignored.
+                            let dest_row_start = if is_after { pos.0 + 1 } else { pos.0 };
+                            for (r_off, row_data) in rows.iter().enumerate() {
+                                let dest_row = dest_row_start + r_off;
+                                for (col, raw) in row_data.iter().enumerate() {
+                                    if raw.is_empty() {
+                                        continue;
+                                    }
+                                    let adjusted = crate::clipboard::adjust_formula(
+                                        raw,
+                                        dest_row as isize - (pos.0 as isize + r_off as isize),
+                                        0,
+                                    );
+                                    let dest = (dest_row, col);
+                                    let old_raw = self
+                                        .sheet
+                                        .get_cell(dest)
+                                        .map(|c| c.raw.clone())
+                                        .unwrap_or_default();
+                                    if adjusted != old_raw {
+                                        changes.push((dest, old_raw, adjusted.clone()));
+                                        self.write_cell_raw(dest, &adjusted);
+                                    }
+                                }
+                            }
+                        }
                         Register::Block(block) => {
                             // Block (visual selection): p pastes at cursor position
                             for (r_off, row_data) in block.iter().enumerate() {
@@ -586,26 +664,44 @@ impl App {
                     }
                 }
             }
-            Action::NextNonEmpty => {
+            Action::NextNonEmpty(count) => {
+                let count = count.max(1);
                 let (row, col) = self.cursor;
-                for c in (col + 1)..self.sheet.col_count {
+                let mut last = col;
+                let mut hops = 0;
+                let mut c = col + 1;
+                while c < self.sheet.col_count && hops < count {
                     if self.sheet.get_cell((row, c)).is_some() {
-                        self.cursor = (row, c);
-                        self.viewport.ensure_visible(self.cursor);
-                        return;
+                        last = c;
+                        hops += 1;
                     }
+                    c += 1;
+                }
+                if hops > 0 {
+                    self.cursor = (row, last);
+                    self.viewport.ensure_visible(self.cursor);
                 }
             }
-            Action::PrevNonEmpty => {
+            Action::PrevNonEmpty(count) => {
+                let count = count.max(1);
                 let (row, col) = self.cursor;
-                if col > 0 {
-                    for c in (0..col).rev() {
-                        if self.sheet.get_cell((row, c)).is_some() {
-                            self.cursor = (row, c);
-                            self.viewport.ensure_visible(self.cursor);
-                            return;
+                if col == 0 {
+                    return;
+                }
+                let mut last = col;
+                let mut hops = 0;
+                for c in (0..col).rev() {
+                    if self.sheet.get_cell((row, c)).is_some() {
+                        last = c;
+                        hops += 1;
+                        if hops >= count {
+                            break;
                         }
                     }
+                }
+                if hops > 0 {
+                    self.cursor = (row, last);
+                    self.viewport.ensure_visible(self.cursor);
                 }
             }
             Action::ShowHelp(topic) => match topic {
@@ -1093,7 +1189,7 @@ mod tests {
         let mut app = App::new();
         app.process_action(Action::EditCell((0, 0), "x".into()));
         app.process_action(Action::EditCell((0, 1), "y".into()));
-        app.process_action(Action::YankRow(0));
+        app.process_action(Action::YankRow { start: 0, count: 1 });
         // P on row 1 puts the yanked row on row 1.
         app.process_action(Action::PasteBefore((1, 0)));
         assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("x"));
@@ -1108,7 +1204,7 @@ mod tests {
         let mut app = App::new();
         app.process_action(Action::EditCell((0, 0), "x".into()));
         app.process_action(Action::EditCell((0, 1), "y".into()));
-        app.process_action(Action::YankRow(0));
+        app.process_action(Action::YankRow { start: 0, count: 1 });
         app.process_action(Action::PasteBefore((1, 0)));
         app.process_action(Action::Undo);
         app.process_action(Action::Redo);
@@ -1123,7 +1219,7 @@ mod tests {
         app.process_action(Action::EditCell((0, 1), "y".into()));
         app.process_action(Action::EditCell((1, 0), "old0".into()));
         app.process_action(Action::EditCell((1, 1), "old1".into()));
-        app.process_action(Action::YankRow(0));
+        app.process_action(Action::YankRow { start: 0, count: 1 });
         app.process_action(Action::PasteBefore((1, 0)));
         assert_eq!(raw_at(&app, (1, 0)).as_deref(), Some("x"));
         assert_eq!(raw_at(&app, (1, 1)).as_deref(), Some("y"));
@@ -1264,7 +1360,7 @@ mod tests {
         app.process_action(Action::EditCell((0, 1), "world".into()));
         app.process_action(Action::EditCell((1, 0), "keep".into()));
 
-        app.process_action(Action::DeleteRow(0));
+        app.process_action(Action::DeleteRow { start: 0, count: 1 });
         assert!(app.sheet.get_cell((0, 0)).is_none());
         assert!(app.sheet.get_cell((0, 1)).is_none());
         assert_eq!(
@@ -1293,7 +1389,7 @@ mod tests {
         app.process_action(Action::EditCell((0, 0), "hello".into()));
         app.process_action(Action::EditCell((0, 1), "world".into()));
 
-        app.process_action(Action::DeleteRow(0));
+        app.process_action(Action::DeleteRow { start: 0, count: 1 });
         app.process_action(Action::Undo);
         app.process_action(Action::Redo);
 
@@ -2081,7 +2177,7 @@ mod tests {
         app.process_action(Action::EditCell((0, 0), "10".into()));
         app.process_action(Action::EditCell((0, 1), "=A1*2".into()));
 
-        app.process_action(Action::DeleteRow(0));
+        app.process_action(Action::DeleteRow { start: 0, count: 1 });
         app.process_action(Action::Undo);
 
         assert_eq!(
@@ -2091,6 +2187,180 @@ mod tests {
         // Formula should re-evaluate after restoration.
         let val = app.sheet.get_cell((0, 1)).map(|c| c.value.to_string());
         assert_eq!(val.as_deref(), Some("20"));
+    }
+
+    // ── numeric count prefix ([count]j, [count]G, [count]dd, [count]yy) ──
+
+    #[test]
+    fn move_cursor_with_count_advances_n_steps() {
+        let mut app = App::new();
+        app.cursor = (2, 3);
+        app.process_action(Action::MoveCursor(crate::action::Direction::Down, 5));
+        assert_eq!(app.cursor, (7, 3));
+        app.process_action(Action::MoveCursor(crate::action::Direction::Right, 4));
+        assert_eq!(app.cursor, (7, 7));
+        app.process_action(Action::MoveCursor(crate::action::Direction::Up, 100));
+        assert_eq!(app.cursor, (0, 7), "saturating_sub clamps at 0");
+        app.process_action(Action::MoveCursor(crate::action::Direction::Left, 100));
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn move_cursor_count_zero_treated_as_one() {
+        let mut app = App::new();
+        app.cursor = (0, 0);
+        app.process_action(Action::MoveCursor(crate::action::Direction::Down, 0));
+        assert_eq!(app.cursor, (1, 0));
+    }
+
+    #[test]
+    fn goto_row_jumps_to_one_indexed_row() {
+        let mut app = App::new();
+        app.cursor = (0, 2);
+        app.process_action(Action::GotoRow(10));
+        assert_eq!(app.cursor, (9, 2), "10G goes to row index 9");
+    }
+
+    #[test]
+    fn goto_row_zero_clamps_to_first() {
+        let mut app = App::new();
+        app.cursor = (5, 0);
+        app.process_action(Action::GotoRow(0));
+        assert_eq!(app.cursor, (0, 0));
+    }
+
+    #[test]
+    fn goto_row_records_jump_for_ctrl_o() {
+        let mut app = App::new();
+        app.cursor = (5, 0);
+        app.process_action(Action::GotoRow(20));
+        // Jump back should return us to (5, 0).
+        app.process_action(Action::JumpBack);
+        assert_eq!(app.cursor, (5, 0));
+    }
+
+    #[test]
+    fn delete_multiple_rows_clears_them_all() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((1, 0), "b".into()));
+        app.process_action(Action::EditCell((2, 0), "c".into()));
+        app.process_action(Action::EditCell((3, 0), "keep".into()));
+
+        app.process_action(Action::DeleteRow { start: 0, count: 3 });
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+        assert!(app.sheet.get_cell((2, 0)).is_none());
+        assert_eq!(
+            app.sheet.get_cell((3, 0)).map(|c| c.raw.as_str()),
+            Some("keep")
+        );
+    }
+
+    #[test]
+    fn delete_multiple_rows_undoes_atomically() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((1, 0), "b".into()));
+        app.process_action(Action::EditCell((2, 0), "c".into()));
+
+        app.process_action(Action::DeleteRow { start: 0, count: 3 });
+        app.process_action(Action::Undo);
+        // Single undo restores all three rows (single MultiCellEdit entry).
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            app.sheet.get_cell((2, 0)).map(|c| c.raw.as_str()),
+            Some("c")
+        );
+    }
+
+    #[test]
+    fn yank_multiple_rows_then_paste_below_drops_block() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::EditCell((0, 1), "y".into()));
+        app.process_action(Action::EditCell((1, 0), "z".into()));
+        app.cursor = (0, 0);
+
+        app.process_action(Action::YankRow { start: 0, count: 2 });
+        app.process_action(Action::Paste((0, 0)));
+        // Pasted starting at row 1 (below row 0): row 1 should be x/y,
+        // row 2 should be z.
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("x")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 1)).map(|c| c.raw.as_str()),
+            Some("y")
+        );
+        assert_eq!(
+            app.sheet.get_cell((2, 0)).map(|c| c.raw.as_str()),
+            Some("z")
+        );
+    }
+
+    #[test]
+    fn delete_then_paste_multi_row_restores_via_register() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((1, 0), "b".into()));
+        app.process_action(Action::EditCell((2, 0), "c".into()));
+        app.cursor = (0, 0);
+
+        app.process_action(Action::DeleteRow { start: 0, count: 3 });
+        // After 3dd at row 0, the register holds 3 rows. PasteBefore
+        // (P) places them starting at the current row.
+        app.process_action(Action::PasteBefore((0, 0)));
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            app.sheet.get_cell((2, 0)).map(|c| c.raw.as_str()),
+            Some("c")
+        );
+    }
+
+    #[test]
+    fn next_non_empty_with_count_hops_n_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 1), "a".into()));
+        app.process_action(Action::EditCell((0, 3), "b".into()));
+        app.process_action(Action::EditCell((0, 5), "c".into()));
+        app.cursor = (0, 0);
+
+        app.process_action(Action::NextNonEmpty(2));
+        assert_eq!(app.cursor, (0, 3));
+        app.process_action(Action::NextNonEmpty(1));
+        assert_eq!(app.cursor, (0, 5));
+        // Asking for more than available: stay where we got to (last).
+        let before = app.cursor;
+        app.process_action(Action::NextNonEmpty(99));
+        assert_eq!(app.cursor, before, "no more non-empty cells, stay put");
+    }
+
+    #[test]
+    fn prev_non_empty_with_count_hops_n_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 1), "a".into()));
+        app.process_action(Action::EditCell((0, 3), "b".into()));
+        app.process_action(Action::EditCell((0, 5), "c".into()));
+        app.cursor = (0, 5);
+
+        app.process_action(Action::PrevNonEmpty(2));
+        assert_eq!(app.cursor, (0, 1));
     }
 
     // ── Delimiter save warnings ──────────────────────────────────────────────

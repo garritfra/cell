@@ -4,6 +4,16 @@
 
 ### Added
 
+- Vim-style numeric count prefix in normal mode: type digits before a motion or
+  operator to repeat or scale it. `5j` moves five rows down, `10G` jumps to row
+  10, `5gg` jumps to row 5 from the top, `3dd` deletes three rows (line-wise,
+  pastable as a block with `p`/`P`), `4yy` yanks four rows, `2w` / `3b` hop
+  multiple non-empty cells. `0` alone still goes to the first column; after a
+  non-zero digit, `0` extends the count (so `10j` really moves ten rows). The
+  partially-typed count and operator render in the status line as you type
+  (vim's `showcmd`). `Esc` cancels a half-typed count, and counts saturate at
+  one million to keep huge accidental inputs responsive
+  ([#55](https://github.com/garritfra/cell/pull/55))
 - Custom field delimiter support: `--delimiter '|'` CLI flag, auto-detection from
   file content, and `:set delimiter=X` ex-command. Writing with a non-standard
   delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
