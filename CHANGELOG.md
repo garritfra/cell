@@ -4,6 +4,11 @@
 
 ### Added
 
+- Command-mode history: in the `:` prompt, `↑` / `↓` cycle through
+  previously executed commands (oldest to newest). The in-progress input is
+  saved and restored when stepping past the newest entry. History is
+  session-only and consecutive duplicates are skipped
+  ([#62](https://github.com/garritfra/cell/pull/62))
 - Vim-style numeric count prefix in normal mode: type digits before a motion or
   operator to repeat or scale it. `5j` moves five rows down, `10G` jumps to row
   10, `5gg` jumps to row 5 from the top, `3dd` deletes three rows (line-wise,
