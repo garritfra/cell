@@ -13,7 +13,7 @@
   partially-typed count and operator render in the status line as you type
   (vim's `showcmd`). `Esc` cancels a half-typed count, and counts saturate at
   one million to keep huge accidental inputs responsive
-  ([#21](https://github.com/garritfra/cell/issues/21))
+  ([#55](https://github.com/garritfra/cell/pull/55))
 
 ## 0.3.1 (2026-04-28)
 
