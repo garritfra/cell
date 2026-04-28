@@ -49,12 +49,6 @@ pub struct Options {
     pub delimiter: Option<u8>,
 }
 
-impl Options {
-    pub fn is_active(&self) -> bool {
-        !self.reads.is_empty() || !self.evals.is_empty() || !self.writes.is_empty()
-    }
-}
-
 fn resolve_delimiter(
     path: &Path,
     format: Format,
