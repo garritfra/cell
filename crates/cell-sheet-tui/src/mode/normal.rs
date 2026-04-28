@@ -25,6 +25,10 @@ pub struct NormalState {
     /// `0` only starts a count *after* the first non-zero digit; before
     /// that, `0` is the `goto-first-column` motion.
     pub pending_count: Option<usize>,
+    /// Count typed *after* an operator key in operator-pending mode (e.g.
+    /// the `3` in `d3j`). When both `pending_count` (outer) and this inner
+    /// count are present, they are multiplied: `5d2j` → effective count 10.
+    pending_motion_count: Option<usize>,
 }
 
 impl NormalState {
@@ -33,6 +37,7 @@ impl NormalState {
             pending: None,
             pending_find: None,
             pending_count: None,
+            pending_motion_count: None,
         }
     }
 
@@ -58,9 +63,11 @@ impl NormalState {
     /// command fires (e.g. `i`, `:`) so the next keypress starts fresh.
     fn discard_count(&mut self) {
         self.pending_count = None;
+        self.pending_motion_count = None;
     }
 
-    /// Append a digit to the pending count buffer with overflow protection.
+    /// Append a digit to the outer (pre-operator) count buffer with overflow
+    /// protection.
     fn push_digit(&mut self, d: u32) {
         let next = self
             .pending_count
@@ -69,6 +76,26 @@ impl NormalState {
             .saturating_add(d as usize)
             .min(COUNT_CAP);
         self.pending_count = Some(next);
+    }
+
+    /// Append a digit to the inner (post-operator) motion count buffer.
+    fn push_motion_digit(&mut self, d: u32) {
+        let next = self
+            .pending_motion_count
+            .unwrap_or(0)
+            .saturating_mul(10)
+            .saturating_add(d as usize)
+            .min(COUNT_CAP);
+        self.pending_motion_count = Some(next);
+    }
+
+    /// Consume both count buffers and return outer × inner (each defaulting to
+    /// 1). Used by operator-pending-then-motion arms to implement vim's count
+    /// multiplication rule (`5d2j` → 10).
+    fn take_motion_count(&mut self) -> usize {
+        let outer = self.pending_count.take().unwrap_or(1).max(1);
+        let inner = self.pending_motion_count.take().unwrap_or(1).max(1);
+        outer.saturating_mul(inner)
     }
 
     pub fn handle_key(&mut self, key: KeyEvent, app: &App) -> Action {
@@ -95,53 +122,159 @@ impl NormalState {
         if key.code == KeyCode::Esc {
             self.pending = None;
             self.pending_count = None;
+            self.pending_motion_count = None;
             return Action::Noop;
         }
 
-        // Handle Ctrl combinations first. Counts don't apply to these
-        // (Vim itself supports `[count]Ctrl-d` etc., but that's not in
-        // scope here — discard so the next keypress starts fresh).
+        // Handle Ctrl combinations first. Counts don't apply to most of
+        // these (Vim itself supports `[count]Ctrl-d` etc., but that's not
+        // in scope here — discard so the next keypress starts fresh).
+        // Exception: Ctrl+a / Ctrl+x consume the count as the step size.
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            self.discard_count();
-            return match key.code {
-                KeyCode::Char('d') => Action::HalfPageDown,
-                KeyCode::Char('u') => Action::HalfPageUp,
-                KeyCode::Char('f') => Action::PageDown,
-                KeyCode::Char('b') => Action::PageUp,
-                KeyCode::Char('r') => Action::Redo,
-                KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
-                KeyCode::Char('e') => Action::ScrollLineDown,
-                KeyCode::Char('y') => Action::ScrollLineUp,
-                KeyCode::Char('o') => Action::JumpBack,
-                _ => Action::Noop,
-            };
+            match key.code {
+                KeyCode::Char('a') => {
+                    let delta = self.take_count() as i64;
+                    return Action::AdjustNumber {
+                        pos: app.cursor,
+                        delta,
+                    };
+                }
+                KeyCode::Char('x') => {
+                    let delta = self.take_count() as i64;
+                    return Action::AdjustNumber {
+                        pos: app.cursor,
+                        delta: -delta,
+                    };
+                }
+                _ => {
+                    self.discard_count();
+                    return match key.code {
+                        KeyCode::Char('d') => Action::HalfPageDown,
+                        KeyCode::Char('u') => Action::HalfPageUp,
+                        KeyCode::Char('f') => Action::PageDown,
+                        KeyCode::Char('b') => Action::PageUp,
+                        KeyCode::Char('r') => Action::Redo,
+                        KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
+                        KeyCode::Char('e') => Action::ScrollLineDown,
+                        KeyCode::Char('y') => Action::ScrollLineUp,
+                        KeyCode::Char('o') => Action::JumpBack,
+                        _ => Action::Noop,
+                    };
+                }
+            }
         }
 
-        // Handle pending operator/prefix sequences. The count threaded
-        // here was buffered before `g`/`d`/`y` was pressed, e.g. `5dd`,
-        // `10gg`. Marks/`'`/`` ` ``/`z` ignore the count.
+        // Digit handling: build up a count prefix.
+        // - `1`-`9` always start/extend a count.
+        // - `0` is `goto-first-column` ONLY when no count is pending and no
+        //   operator is pending; otherwise it extends the count.
+        // - When an operator is already pending (e.g. after `d`), digits
+        //   feed the *motion* count so that `d3j` works as expected.
+        if let KeyCode::Char(c) = key.code {
+            if let Some(d) = c.to_digit(10) {
+                if self.pending.is_some() {
+                    // Operator-pending: digit belongs to the motion count.
+                    self.push_motion_digit(d);
+                    return Action::Noop;
+                }
+                if d == 0 && self.pending_count.is_none() {
+                    return Action::GotoFirstCol;
+                }
+                self.push_digit(d);
+                return Action::Noop;
+            }
+        }
+
+        // Handle pending operator/prefix sequences. The outer count was
+        // buffered before the operator key was pressed (e.g. `5dd`, `10gg`);
+        // the motion count was buffered after it (e.g. `d3j`, `y2k`).
+        // Marks/`'`/`` ` ``/`z` ignore counts.
         if let Some(prev) = self.pending.take() {
             return match (prev, key.code) {
-                ('g', KeyCode::Char('g')) => match self.pending_count.take() {
-                    Some(n) => Action::GotoRow(n),
-                    None => Action::GotoFirstRow,
-                },
+                ('g', KeyCode::Char('g')) => {
+                    let n = self.pending_count.take();
+                    self.pending_motion_count = None;
+                    match n {
+                        Some(n) => Action::GotoRow(n),
+                        None => Action::GotoFirstRow,
+                    }
+                }
                 ('g', KeyCode::Char('v')) => {
                     self.discard_count();
                     Action::ReselectLastVisual
                 }
                 ('d', KeyCode::Char('d')) => {
-                    let count = self.take_count();
+                    let count = self.pending_count.take().unwrap_or(1).max(1);
+                    self.pending_motion_count = None;
                     Action::DeleteRow {
                         start: app.cursor.0,
                         count,
                     }
                 }
                 ('y', KeyCode::Char('y')) => {
-                    let count = self.take_count();
+                    let count = self.pending_count.take().unwrap_or(1).max(1);
+                    self.pending_motion_count = None;
                     Action::YankRow {
                         start: app.cursor.0,
                         count,
+                    }
+                }
+                // Operator + directional motion: clear rows/cells in range.
+                ('d', KeyCode::Char('j')) => {
+                    let n = self.take_motion_count();
+                    Action::ClearRange {
+                        start: (app.cursor.0, 0),
+                        end: (app.cursor.0.saturating_add(n), usize::MAX),
+                    }
+                }
+                ('d', KeyCode::Char('k')) => {
+                    let n = self.take_motion_count();
+                    Action::ClearRange {
+                        start: (app.cursor.0.saturating_sub(n), 0),
+                        end: (app.cursor.0, usize::MAX),
+                    }
+                }
+                ('d', KeyCode::Char('l')) => {
+                    let n = self.take_motion_count();
+                    Action::ClearRange {
+                        start: app.cursor,
+                        end: (app.cursor.0, app.cursor.1.saturating_add(n)),
+                    }
+                }
+                ('d', KeyCode::Char('h')) => {
+                    let n = self.take_motion_count();
+                    Action::ClearRange {
+                        start: (app.cursor.0, app.cursor.1.saturating_sub(n)),
+                        end: app.cursor,
+                    }
+                }
+                // Operator + directional motion: yank rows/cells in range.
+                ('y', KeyCode::Char('j')) => {
+                    let n = self.take_motion_count();
+                    Action::YankRange {
+                        start: (app.cursor.0, 0),
+                        end: (app.cursor.0.saturating_add(n), usize::MAX),
+                    }
+                }
+                ('y', KeyCode::Char('k')) => {
+                    let n = self.take_motion_count();
+                    Action::YankRange {
+                        start: (app.cursor.0.saturating_sub(n), 0),
+                        end: (app.cursor.0, usize::MAX),
+                    }
+                }
+                ('y', KeyCode::Char('l')) => {
+                    let n = self.take_motion_count();
+                    Action::YankRange {
+                        start: app.cursor,
+                        end: (app.cursor.0, app.cursor.1.saturating_add(n)),
+                    }
+                }
+                ('y', KeyCode::Char('h')) => {
+                    let n = self.take_motion_count();
+                    Action::YankRange {
+                        start: (app.cursor.0, app.cursor.1.saturating_sub(n)),
+                        end: app.cursor,
                     }
                 }
                 ('z', KeyCode::Char('z')) => {
@@ -181,20 +314,6 @@ impl NormalState {
                     Action::Noop
                 }
             };
-        }
-
-        // Digit handling: build up a count prefix.
-        // - `1`-`9` always start/extend a count.
-        // - `0` is `goto-first-column` ONLY when no count is pending;
-        //   after a digit, `0` extends the count (so `10`, `20` etc.).
-        if let KeyCode::Char(c) = key.code {
-            if let Some(d) = c.to_digit(10) {
-                if d == 0 && self.pending_count.is_none() {
-                    return Action::GotoFirstCol;
-                }
-                self.push_digit(d);
-                return Action::Noop;
-            }
         }
 
         match key.code {
@@ -355,6 +474,10 @@ impl NormalState {
             KeyCode::Enter => {
                 self.discard_count();
                 Action::ChangeMode(Mode::Insert)
+            }
+            KeyCode::Char('.') => {
+                self.discard_count();
+                Action::RepeatLastChange
             }
             _ => {
                 // Unknown key: throw away any pending count so we don't
@@ -777,12 +900,78 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_a_emits_adjust_number_increment() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(ctrl_key('a'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: 1
+            }
+        );
+    }
+
+    #[test]
+    fn ctrl_x_emits_adjust_number_decrement() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(ctrl_key('x'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: -1
+            }
+        );
+    }
+
+    #[test]
+    fn count_ctrl_a_uses_count_as_delta() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('5')), &app);
+        assert_eq!(
+            state.handle_key(ctrl_key('a'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: 5
+            }
+        );
+        assert!(state.pending_count.is_none(), "count must be consumed");
+    }
+
+    #[test]
+    fn count_ctrl_x_uses_count_as_negative_delta() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('3')), &app);
+        assert_eq!(
+            state.handle_key(ctrl_key('x'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: -3
+            }
+        );
+        assert!(state.pending_count.is_none(), "count must be consumed");
+    }
+
+    #[test]
     fn tab_jumps_forward() {
         let app = App::new();
         let mut state = NormalState::new();
         assert_eq!(
             state.handle_key(key(KeyCode::Tab), &app),
             Action::JumpForward
+        );
+    }
+
+    #[test]
+    fn dot_emits_repeat_last_change() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('.')), &app),
+            Action::RepeatLastChange
         );
     }
 
@@ -950,6 +1139,7 @@ mod tests {
         let _ = state.handle_key(key(KeyCode::Esc), &app);
         assert!(state.pending_count.is_none());
         assert!(state.pending.is_none());
+        assert!(state.pending_motion_count.is_none());
     }
 
     #[test]
@@ -1019,5 +1209,160 @@ mod tests {
         assert_eq!(state.pending_op(), None);
         let _ = state.handle_key(key(KeyCode::Char('d')), &app);
         assert_eq!(state.pending_op(), Some('d'));
+    }
+
+    // --- operator-pending + motion tests ---------------------------------
+
+    #[test]
+    fn d_j_clears_rows_downward() {
+        // `d3j` from row 0 clears rows 0..=3 (inclusive).
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            feed(&mut state, &app, "d3j"),
+            Action::ClearRange {
+                start: (0, 0),
+                end: (3, usize::MAX),
+            }
+        );
+    }
+
+    #[test]
+    fn d_k_clears_rows_upward() {
+        // `d2k` from row 5 clears rows 3..=5.
+        let mut app = App::new();
+        app.cursor = (5, 0);
+        let mut state = NormalState::new();
+        assert_eq!(
+            feed(&mut state, &app, "d2k"),
+            Action::ClearRange {
+                start: (3, 0),
+                end: (5, usize::MAX),
+            }
+        );
+    }
+
+    #[test]
+    fn d_l_clears_cells_rightward() {
+        // `d3l` from (0, 0) clears cells (0,0) through (0,3).
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            feed(&mut state, &app, "d3l"),
+            Action::ClearRange {
+                start: (0, 0),
+                end: (0, 3),
+            }
+        );
+    }
+
+    #[test]
+    fn y_l_yanks_cells_rightward() {
+        // `y3l` from (0, 0) yanks cells (0,0) through (0,3).
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            feed(&mut state, &app, "y3l"),
+            Action::YankRange {
+                start: (0, 0),
+                end: (0, 3),
+            }
+        );
+    }
+
+    #[test]
+    fn y_j_yanks_rows_downward() {
+        // `y2j` from row 1 yanks rows 1..=3.
+        let mut app = App::new();
+        app.cursor = (1, 2);
+        let mut state = NormalState::new();
+        assert_eq!(
+            feed(&mut state, &app, "y2j"),
+            Action::YankRange {
+                start: (1, 0),
+                end: (3, usize::MAX),
+            }
+        );
+    }
+
+    #[test]
+    fn outer_inner_count_multiplication() {
+        // `5d2j` — outer=5, inner=2, effective=10 → clears rows 0..=10.
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('5')), &app);
+        let _ = state.handle_key(key(KeyCode::Char('d')), &app);
+        let _ = state.handle_key(key(KeyCode::Char('2')), &app);
+        assert_eq!(state.pending_motion_count, Some(2));
+        let action = state.handle_key(key(KeyCode::Char('j')), &app);
+        assert_eq!(
+            action,
+            Action::ClearRange {
+                start: (0, 0),
+                end: (10, usize::MAX),
+            }
+        );
+        assert!(state.pending_count.is_none());
+        assert!(state.pending_motion_count.is_none());
+    }
+
+    #[test]
+    fn operator_no_motion_count_defaults_to_one() {
+        // `dj` with no count clears 1 row below (rows 0..=1).
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            feed(&mut state, &app, "dj"),
+            Action::ClearRange {
+                start: (0, 0),
+                end: (1, usize::MAX),
+            }
+        );
+    }
+
+    #[test]
+    fn operator_then_esc_cancels_cleanly() {
+        // `d5` then Esc: all state cleared, next `j` behaves normally.
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('d')), &app);
+        let _ = state.handle_key(key(KeyCode::Char('5')), &app);
+        assert_eq!(state.pending, Some('d'));
+        assert_eq!(state.pending_motion_count, Some(5));
+        let _ = state.handle_key(key(KeyCode::Esc), &app);
+        assert!(state.pending.is_none());
+        assert!(state.pending_count.is_none());
+        assert!(state.pending_motion_count.is_none());
+        // Next keypress should not carry any orphaned counts.
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('j')), &app),
+            Action::MoveCursor(Direction::Down, 1)
+        );
+    }
+
+    #[test]
+    fn motion_digit_does_not_affect_outer_count() {
+        // `5d3j`: outer count (5) and motion count (3) multiply → 15 rows.
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('5')), &app);
+        assert_eq!(state.pending_count, Some(5));
+        let _ = state.handle_key(key(KeyCode::Char('d')), &app);
+        assert_eq!(state.pending_count, Some(5), "outer count survives 'd'");
+        let _ = state.handle_key(key(KeyCode::Char('3')), &app);
+        assert_eq!(
+            state.pending_count,
+            Some(5),
+            "outer count unchanged by motion digit"
+        );
+        assert_eq!(state.pending_motion_count, Some(3));
+        let action = state.handle_key(key(KeyCode::Char('j')), &app);
+        assert_eq!(
+            action,
+            Action::ClearRange {
+                start: (0, 0),
+                end: (15, usize::MAX),
+            }
+        );
     }
 }

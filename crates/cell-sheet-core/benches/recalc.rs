@@ -1,6 +1,7 @@
 use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
 use cell_sheet_core::model::Sheet;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
 
 /// Build a sheet with `n` value cells in column A and `n` formula cells in
 /// column B where B_i = =A_i + 1.  Returns a pair ready for timing.

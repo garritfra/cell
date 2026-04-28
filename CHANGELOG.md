@@ -2,17 +2,6 @@
 
 ## Unreleased
 
-### Fixed
-
-- `ChangeRange` (`c` in Visual mode) now calls `mark_dirty` on dependents and
-  triggers a single topological recalculation after clearing the range.
-  Previously, formulas that referenced cleared cells kept stale values
-  ([#66](https://github.com/garritfra/cell/pull/66)).
-- `DeleteRow` (`dd` / `Ndd`) now calls `mark_dirty` on dependents and triggers
-  a single topological recalculation after clearing the row(s). Previously,
-  formulas that referenced deleted cells kept stale values
-  ([#66](https://github.com/garritfra/cell/pull/66)).
-
 ### Added
 
 - `App::begin_batch` / `App::commit_batch` API for deferred recalculation.
@@ -26,7 +15,28 @@
   `recalculate/fanout` (single-pass cost at various formula counts), and
   `mark_dirty/deep_chain` (BFS propagation depth)
   ([#66](https://github.com/garritfra/cell/pull/66)).
-
+- Normal mode `Ctrl+a` / `Ctrl+x` increment or decrement the number in the
+  current cell by 1 (or `[count]`). Dependent formula cells re-evaluate
+  automatically. No-op with an error message on formula cells; no-op silently
+  on text and empty cells. Repeatable with `.`
+  ([#64](https://github.com/garritfra/cell/pull/64))
+- Normal mode `.` repeats the last cell-mutating change at the current cursor
+  position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
+  edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat
+  register ([#63](https://github.com/garritfra/cell/pull/63))
+- Command-mode history: in the `:` prompt, `↑` / `↓` cycle through
+  previously executed commands (oldest to newest). The in-progress input is
+  saved and restored when stepping past the newest entry. History is
+  session-only and consecutive duplicates are skipped
+  ([#62](https://github.com/garritfra/cell/pull/62))
+- Operator-pending motion counts: a count typed *between* the operator and the
+  motion now works as in vim — `d3j` clears the current row and 3 rows below,
+  `d2k` clears 2 rows above plus the current row, `y3l` yanks the current cell
+  and 3 cells to the right, `y2k` yanks 2 rows upward. Outer and inner counts
+  multiply: `5d2j` clears 10 rows downward. All directional motions (`h j k l`)
+  are supported after `d` and `y`. Count prefixes in Visual mode also work: `5j`
+  in visual extends the selection 5 rows, `3l` extends it 3 cells right
+  ([#59](https://github.com/garritfra/cell/pull/59))
 - Vim-style numeric count prefix in normal mode: type digits before a motion or
   operator to repeat or scale it. `5j` moves five rows down, `10G` jumps to row
   10, `5gg` jumps to row 5 from the top, `3dd` deletes three rows (line-wise,
@@ -41,6 +51,26 @@
   file content, and `:set delimiter=X` ex-command. Writing with a non-standard
   delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
   Resolves #20.
+- Criterion benchmark suite in `cell-sheet-core` (`cargo bench -p cell-sheet-core`):
+  `csv_load_100k`, `formula_recalc_10k`, `mark_dirty_chain`,
+  `recalculate_wide_dag`, `range_sum_10k`. CI compiles the suite on every
+  push to prevent API-breakage regressions. See `BENCH.md` for how to run
+  and record results
+  ([#61](https://github.com/garritfra/cell/pull/61)).
+
+### Fixed
+
+- `ChangeRange` (`c` in Visual mode) now calls `mark_dirty` on dependents and
+  triggers a single topological recalculation after clearing the range.
+  Previously, formulas that referenced cleared cells kept stale values
+  ([#66](https://github.com/garritfra/cell/pull/66)).
+- `DeleteRow` (`dd` / `Ndd`) now calls `mark_dirty` on dependents and triggers
+  a single topological recalculation after clearing the row(s). Previously,
+  formulas that referenced deleted cells kept stale values
+  ([#66](https://github.com/garritfra/cell/pull/66)).
+- Visual `c` (`ChangeRange`) now records a single undo step for the entire
+  range, consistent with `dd`, visual `d`, and paste
+  ([#60](https://github.com/garritfra/cell/pull/60)).
 
 ## 0.3.1 (2026-04-28)
 

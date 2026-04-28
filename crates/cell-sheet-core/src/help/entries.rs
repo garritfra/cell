@@ -12,7 +12,11 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
                  0 alone goes to the first column; only after a non-zero digit\n\
                  does 0 extend the count (so 10j really moves 10 rows).\n\n\
                  Esc cancels a partially-typed count. Counts apply to:\n\
-                 h j k l, Up/Down/Left/Right, w b, gg G, dd yy.",
+                 h j k l, Up/Down/Left/Right, w b, gg G, dd yy.\n\n\
+                 Operator-pending counts: you can also place a count between the\n\
+                 operator and the motion (e.g. d3j, y2k). If both an outer count\n\
+                 and an inner motion count are given they multiply: 5d2j clears\n\
+                 10 rows downward from the cursor.",
     },
     HelpEntry {
         tags: &["h"],
@@ -93,7 +97,42 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
                  deletes [count] rows starting at the cursor; the deleted\n\
                  rows are stored line-wise in the register and can be\n\
                  pasted as a block with p (below) or P (above). Undoable\n\
-                 with u.",
+                 with u.\n\n\
+                 To clear a range using a motion instead of repeating the\n\
+                 operator, use d{motion}: see dj, dk, dl, dh.",
+    },
+    HelpEntry {
+        tags: &["dj", "d3j"],
+        category: HelpCategory::Normal,
+        summary: "Clear rows downward (d[count]j)",
+        detail: "Clear the current row and [count] rows below it (content only;\n\
+                 rows are not removed). Without a count, clears the current row\n\
+                 and the one below. An outer count before d multiplies the motion\n\
+                 count: 5d2j clears 10 rows. Undoable with u.",
+    },
+    HelpEntry {
+        tags: &["dk", "d2k"],
+        category: HelpCategory::Normal,
+        summary: "Clear rows upward (d[count]k)",
+        detail: "Clear [count] rows above the cursor and the current row\n\
+                 (content only; rows are not removed). Without a count, clears\n\
+                 the current row and the one above. Undoable with u.",
+    },
+    HelpEntry {
+        tags: &["dl"],
+        category: HelpCategory::Normal,
+        summary: "Clear cells rightward (d[count]l)",
+        detail: "Clear the current cell and [count] cells to the right.\n\
+                 Without a count, clears the current cell and the one to its\n\
+                 right. Undoable with u.",
+    },
+    HelpEntry {
+        tags: &["dh"],
+        category: HelpCategory::Normal,
+        summary: "Clear cells leftward (d[count]h)",
+        detail: "Clear [count] cells to the left and the current cell.\n\
+                 Without a count, clears the cell to the left and the current\n\
+                 cell. Undoable with u.",
     },
     HelpEntry {
         tags: &["yy"],
@@ -101,7 +140,40 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         summary: "Yank current row ([count]yy)",
         detail: "Copies all cells in the current row to the register. With a\n\
                  count prefix, yanks [count] rows starting at the cursor.\n\
-                 Paste with p (below) or P (above).",
+                 Paste with p (below) or P (above).\n\n\
+                 To yank a range using a motion, use y{motion}: see yj, yk,\n\
+                 yl, yh.",
+    },
+    HelpEntry {
+        tags: &["yj"],
+        category: HelpCategory::Normal,
+        summary: "Yank rows downward (y[count]j)",
+        detail: "Yank the current row and [count] rows below it into the register.\n\
+                 Paste with p (below) or P (above). An outer count multiplies\n\
+                 the motion count: 5y2j yanks 10 rows.",
+    },
+    HelpEntry {
+        tags: &["yk"],
+        category: HelpCategory::Normal,
+        summary: "Yank rows upward (y[count]k)",
+        detail: "Yank [count] rows above the cursor and the current row into the\n\
+                 register. Paste with p (below) or P (above).",
+    },
+    HelpEntry {
+        tags: &["yl", "y3l", "y4l"],
+        category: HelpCategory::Normal,
+        summary: "Yank cells rightward (y[count]l)",
+        detail: "Yank the current cell and [count] cells to the right into the\n\
+                 register. Without a count, yanks the current cell and the one\n\
+                 to its right. Paste with p.",
+    },
+    HelpEntry {
+        tags: &["yh"],
+        category: HelpCategory::Normal,
+        summary: "Yank cells leftward (y[count]h)",
+        detail: "Yank [count] cells to the left and the current cell into the\n\
+                 register. Without a count, yanks the cell to the left and the\n\
+                 current cell. Paste with p.",
     },
     HelpEntry {
         tags: &["x"],
@@ -120,6 +192,15 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         category: HelpCategory::Normal,
         summary: "Paste above",
         detail: "Paste the register contents above the current row (for row/block\nregisters) or into the current cell (for cell registers).\nFormula references are adjusted automatically.",
+    },
+    HelpEntry {
+        tags: &["."],
+        category: HelpCategory::Normal,
+        summary: "Repeat last change",
+        detail: "Re-apply the last cell-mutating operation at the current cursor \
+                 position. Works after x, dd, d (visual), p, P, and any edit committed from \
+                 Insert mode (i/a/c + Esc or Enter). u and Ctrl-r do not affect \
+                 the repeat register.",
     },
     HelpEntry {
         tags: &["u"],
@@ -235,6 +316,24 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         summary: "Repeat last find reversed",
         detail: "Repeat the last f / F find in the opposite direction.",
     },
+    HelpEntry {
+        tags: &["Ctrl+A"],
+        category: HelpCategory::Normal,
+        summary: "Increment number under cursor ([count]Ctrl+A)",
+        detail: "Add 1 (or [count]) to the number stored in the current cell.\n\
+                 Dependent formula cells are re-evaluated automatically.\n\
+                 No-op if the cell contains a formula (shows an error message)\n\
+                 or non-numeric text. Repeatable with '.'.",
+    },
+    HelpEntry {
+        tags: &["Ctrl+X"],
+        category: HelpCategory::Normal,
+        summary: "Decrement number under cursor ([count]Ctrl+X)",
+        detail: "Subtract 1 (or [count]) from the number stored in the current cell.\n\
+                 Dependent formula cells are re-evaluated automatically.\n\
+                 No-op if the cell contains a formula (shows an error message)\n\
+                 or non-numeric text. Repeatable with '.'.",
+    },
 ];
 
 pub static INSERT_ENTRIES: &[HelpEntry] = &[
@@ -294,6 +393,15 @@ pub static VISUAL_ENTRIES: &[HelpEntry] = &[
         category: HelpCategory::Visual,
         summary: "Enter Visual Block mode",
         detail: "Start rectangular block selection from Normal mode.",
+    },
+    HelpEntry {
+        tags: &["count-visual", "[count]-visual"],
+        category: HelpCategory::Visual,
+        summary: "Count prefix in Visual mode ([count]motion)",
+        detail: "Type digits before a motion key (h j k l) to extend the\n\
+                 selection by that many cells. For example, v then 3l selects\n\
+                 the current cell plus 3 more to the right; 5j extends the\n\
+                 selection 5 rows down.",
     },
     HelpEntry {
         tags: &["d-visual"],

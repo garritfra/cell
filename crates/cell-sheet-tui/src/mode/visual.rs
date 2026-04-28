@@ -3,6 +3,8 @@ use crate::app::App;
 use cell_sheet_core::model::CellPos;
 use crossterm::event::{KeyCode, KeyEvent};
 
+const COUNT_CAP: usize = 1_000_000;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VisualKind {
     Character,
@@ -13,11 +15,18 @@ pub enum VisualKind {
 pub struct VisualState {
     pub anchor: CellPos,
     pub kind: VisualKind,
+    /// Numeric count accumulated from digit keys while in visual mode, so
+    /// that `5j` extends the selection by 5 rows instead of 1.
+    pending_count: Option<usize>,
 }
 
 impl VisualState {
     pub fn new(anchor: CellPos, kind: VisualKind) -> Self {
-        VisualState { anchor, kind }
+        VisualState {
+            anchor,
+            kind,
+            pending_count: None,
+        }
     }
 
     pub fn selection(&self, cursor: CellPos) -> (CellPos, CellPos) {
@@ -36,18 +45,58 @@ impl VisualState {
         }
     }
 
-    pub fn handle_key(&self, key: KeyEvent, app: &App) -> Action {
+    /// Consume the pending count, defaulting to 1.
+    fn take_count(&mut self) -> usize {
+        self.pending_count.take().unwrap_or(1).max(1)
+    }
+
+    pub fn handle_key(&mut self, key: KeyEvent, app: &App) -> Action {
         let (start, end) = self.selection(app.cursor);
+
+        // Digit keys accumulate a count prefix for motions (`5j`, `3l`).
+        if let KeyCode::Char(c) = key.code {
+            if let Some(d) = c.to_digit(10) {
+                let next = self
+                    .pending_count
+                    .unwrap_or(0)
+                    .saturating_mul(10)
+                    .saturating_add(d as usize)
+                    .min(COUNT_CAP);
+                self.pending_count = Some(next);
+                return Action::Noop;
+            }
+        }
+
         match key.code {
-            KeyCode::Char('h') | KeyCode::Left => Action::MoveCursor(Direction::Left, 1),
-            KeyCode::Char('j') | KeyCode::Down => Action::MoveCursor(Direction::Down, 1),
-            KeyCode::Char('k') | KeyCode::Up => Action::MoveCursor(Direction::Up, 1),
-            KeyCode::Char('l') | KeyCode::Right => Action::MoveCursor(Direction::Right, 1),
-            KeyCode::Char('c') => Action::ChangeRange { start, end },
-            KeyCode::Char('d') => Action::ClearRange { start, end },
-            KeyCode::Char('y') => Action::YankRange { start, end },
+            KeyCode::Char('h') | KeyCode::Left => {
+                Action::MoveCursor(Direction::Left, self.take_count())
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                Action::MoveCursor(Direction::Down, self.take_count())
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                Action::MoveCursor(Direction::Up, self.take_count())
+            }
+            KeyCode::Char('l') | KeyCode::Right => {
+                Action::MoveCursor(Direction::Right, self.take_count())
+            }
+            KeyCode::Char('c') => {
+                self.pending_count = None;
+                Action::ChangeRange { start, end }
+            }
+            KeyCode::Char('d') => {
+                self.pending_count = None;
+                Action::ClearRange { start, end }
+            }
+            KeyCode::Char('y') => {
+                self.pending_count = None;
+                Action::YankRange { start, end }
+            }
             KeyCode::Esc => Action::ChangeMode(Mode::Normal),
-            _ => Action::Noop,
+            _ => {
+                self.pending_count = None;
+                Action::Noop
+            }
         }
     }
 }
@@ -88,7 +137,7 @@ mod tests {
     #[test]
     fn hjkl_in_visual() {
         let app = App::new();
-        let state = VisualState::new((0, 0), VisualKind::Character);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(
             state.handle_key(key(KeyCode::Char('j')), &app),
             Action::MoveCursor(Direction::Down, 1)
@@ -99,7 +148,7 @@ mod tests {
     fn d_clears_range() {
         let mut app = App::new();
         app.cursor = (2, 2);
-        let state = VisualState::new((0, 0), VisualKind::Character);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(
             state.handle_key(key(KeyCode::Char('d')), &app),
             Action::ClearRange {
@@ -113,7 +162,7 @@ mod tests {
     fn y_yanks_range() {
         let mut app = App::new();
         app.cursor = (1, 1);
-        let state = VisualState::new((0, 0), VisualKind::Character);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(
             state.handle_key(key(KeyCode::Char('y')), &app),
             Action::YankRange {
@@ -126,10 +175,79 @@ mod tests {
     #[test]
     fn esc_exits_visual() {
         let app = App::new();
-        let state = VisualState::new((0, 0), VisualKind::Character);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(
             state.handle_key(key(KeyCode::Esc), &app),
             Action::ChangeMode(Mode::Normal)
         );
+    }
+
+    // --- count-prefix tests ----------------------------------------------
+
+    #[test]
+    fn count_j_extends_selection_by_count() {
+        // `v` then `3j` should move cursor down by 3 (selection extends).
+        let app = App::new();
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        let _ = state.handle_key(key(KeyCode::Char('3')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('j')), &app),
+            Action::MoveCursor(Direction::Down, 3)
+        );
+    }
+
+    #[test]
+    fn count_l_moves_right_by_count() {
+        // `v` then `3l` selects current cell + 3 cells to the right.
+        let app = App::new();
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        let _ = state.handle_key(key(KeyCode::Char('3')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('l')), &app),
+            Action::MoveCursor(Direction::Right, 3)
+        );
+    }
+
+    #[test]
+    fn multi_digit_count_in_visual() {
+        let app = App::new();
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        let _ = state.handle_key(key(KeyCode::Char('1')), &app);
+        let _ = state.handle_key(key(KeyCode::Char('2')), &app);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('k')), &app),
+            Action::MoveCursor(Direction::Up, 12)
+        );
+    }
+
+    #[test]
+    fn count_cleared_after_motion() {
+        let app = App::new();
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        let _ = state.handle_key(key(KeyCode::Char('5')), &app);
+        let _ = state.handle_key(key(KeyCode::Char('j')), &app);
+        // Count was consumed; next motion defaults to 1.
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('j')), &app),
+            Action::MoveCursor(Direction::Down, 1)
+        );
+    }
+
+    #[test]
+    fn count_cleared_on_operator() {
+        // A pending count is discarded when `d`, `y`, or `c` is pressed.
+        let mut app = App::new();
+        app.cursor = (1, 1);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        let _ = state.handle_key(key(KeyCode::Char('3')), &app);
+        // `d` fires the range op and discards the count.
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('d')), &app),
+            Action::ClearRange {
+                start: (0, 0),
+                end: (1, 1),
+            }
+        );
+        assert!(state.pending_count.is_none());
     }
 }

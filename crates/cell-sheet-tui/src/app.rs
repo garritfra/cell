@@ -52,6 +52,15 @@ pub struct App {
     /// When > 0, `EditCell` skips `recalculate`; `commit_batch` triggers it
     /// once when the outermost batch is closed.
     batch_depth: u32,
+    /// Previously executed colon commands, oldest first.
+    pub command_history: Vec<String>,
+    /// Index into `command_history` while the user is cycling with ↑/↓.
+    /// `None` means the user is not currently browsing history.
+    pub command_history_idx: Option<usize>,
+    /// The in-progress command line saved when the user first presses ↑,
+    /// restored when they press ↓ past the most recent entry.
+    pub command_history_scratch: String,
+    pub last_change: Option<Action>,
 }
 
 const JUMP_LIST_CAP: usize = 100;
@@ -93,6 +102,10 @@ impl App {
             jump_idx: 0,
             last_visual: None,
             batch_depth: 0,
+            command_history: Vec::new(),
+            command_history_idx: None,
+            command_history_scratch: String::new(),
+            last_change: None,
         }
     }
 
@@ -164,6 +177,7 @@ impl App {
                     recalculate(&mut self.sheet, &self.deps);
                 }
                 self.dirty = true;
+                self.last_change = Some(Action::EditCell(pos, raw));
             }
             Action::ChangeMode(mode) => {
                 if mode == Mode::Insert {
@@ -176,6 +190,8 @@ impl App {
                 if mode == Mode::Command {
                     self.command_kind = CommandKind::Colon;
                     self.command_line.clear();
+                    self.command_history_idx = None;
+                    self.command_history_scratch.clear();
                 }
                 self.mode = mode;
             }
@@ -202,6 +218,7 @@ impl App {
                     self.sheet.clear_cell(pos);
                     self.dirty = true;
                 }
+                self.last_change = Some(Action::ClearCell(pos));
             }
             Action::ChangeCell(pos) => {
                 let old_raw = self
@@ -384,6 +401,8 @@ impl App {
                     SearchDirection::Backward => CommandKind::Question,
                 };
                 self.search_origin = Some(self.cursor);
+                self.command_history_idx = None;
+                self.command_history_scratch.clear();
                 self.mode = Mode::Command;
             }
             Action::SearchIncremental { pattern, direction } => {
@@ -526,6 +545,7 @@ impl App {
                     self.dirty = true;
                 }
                 self.commit_batch();
+                self.last_change = Some(Action::ClearRange { start, end });
             }
             Action::DeleteRow { start, count } => {
                 let count = count.max(1);
@@ -572,6 +592,7 @@ impl App {
                     self.dirty = true;
                 }
                 self.commit_batch();
+                self.last_change = Some(Action::DeleteRow { start, count });
             }
             Action::Paste(pos) | Action::PasteBefore(pos) => {
                 let is_after = matches!(action, Action::Paste(_));
@@ -675,6 +696,11 @@ impl App {
                         self.dirty = true;
                     }
                     self.commit_batch();
+                }
+                if is_after {
+                    self.last_change = Some(Action::Paste(pos));
+                } else {
+                    self.last_change = Some(Action::PasteBefore(pos));
                 }
             }
             Action::NextNonEmpty(count) => {
@@ -843,7 +869,61 @@ impl App {
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }
+            Action::RepeatLastChange => {
+                if let Some(change) = self.last_change.take() {
+                    let saved = change.clone();
+                    let rebound = self.rebind_change_to_cursor(change);
+                    self.process_action(rebound);
+                    self.last_change = Some(saved);
+                }
+            }
+            Action::AdjustNumber { pos, delta } => {
+                if let Some(cell) = self.sheet.get_cell(pos) {
+                    let raw = cell.raw.clone();
+                    if raw.starts_with('=') {
+                        self.status_message = Some("E: Cannot increment a formula".into());
+                    } else if let Ok(n) = raw.parse::<f64>() {
+                        let new_raw = (n + delta as f64).to_string();
+                        self.undo_stack.push(UndoEntry::CellEdit {
+                            pos,
+                            old_raw: raw,
+                            new_raw: new_raw.clone(),
+                        });
+                        self.sheet.set_cell(pos, &new_raw);
+                        mark_dirty(&mut self.sheet, &self.deps, pos);
+                        recalculate(&mut self.sheet, &self.deps);
+                        self.dirty = true;
+                    }
+                    // text or empty string: no-op
+                }
+                // empty cell (not in sheet): no-op
+                self.last_change = Some(Action::AdjustNumber { pos, delta });
+            }
             Action::Open(_) | Action::Resize => {}
+        }
+    }
+
+    fn rebind_change_to_cursor(&self, action: Action) -> Action {
+        let cursor = self.cursor;
+        match action {
+            Action::EditCell(_, raw) => Action::EditCell(cursor, raw),
+            Action::ClearCell(_) => Action::ClearCell(cursor),
+            Action::ClearRange { start, end } => {
+                let dr = end.0.saturating_sub(start.0);
+                let dc = end.1.saturating_sub(start.1);
+                Action::ClearRange {
+                    start: cursor,
+                    end: (cursor.0 + dr, cursor.1 + dc),
+                }
+            }
+            Action::DeleteRow { count, .. } => Action::DeleteRow {
+                start: cursor.0,
+                count,
+            },
+            Action::Paste(_) => Action::Paste(cursor),
+            Action::PasteBefore(_) => Action::PasteBefore(cursor),
+            Action::AdjustNumber { delta, .. } => Action::AdjustNumber { pos: cursor, delta },
+            _ => action,
         }
     }
 
@@ -1168,6 +1248,99 @@ mod tests {
         );
     }
 
+    // ── ChangeRange (visual-mode c) ────────────────────────────────────────────
+
+    #[test]
+    fn change_range_single_undo_restores_all_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::EditCell((1, 0), "c".into()));
+        app.process_action(Action::EditCell((1, 1), "d".into()));
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (1, 1),
+        });
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("c")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 1)).map(|c| c.raw.as_str()),
+            Some("d")
+        );
+    }
+
+    #[test]
+    fn change_range_undo_preserves_formula() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (0, 0),
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("=1+1")
+        );
+        let val = app.sheet.get_cell((0, 0)).map(|c| c.value.to_string());
+        assert_eq!(val.as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn change_range_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        app.process_action(Action::Redo);
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn change_range_of_empty_cells_no_undo_entry() {
+        let mut app = App::new();
+        // Set up one prior edit so the undo stack has exactly one entry.
+        app.process_action(Action::EditCell((5, 5), "prior".into()));
+        app.sheet.col_count = 2;
+        app.sheet.row_count = 2;
+        // ChangeRange on a range with no non-empty cells: should push nothing.
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (1, 1),
+        });
+        // The only undo step is the prior EditCell — not the ChangeRange.
+        app.process_action(Action::Undo);
+        assert!(
+            app.sheet.get_cell((5, 5)).is_none(),
+            "undo should have reverted the prior edit, not a no-op ChangeRange"
+        );
+    }
+
     // ── Paste / PasteBefore ─────────────────────────────────────────────────
 
     fn raw_at(app: &App, pos: CellPos) -> Option<String> {
@@ -1351,6 +1524,42 @@ mod tests {
             end: (1, 1),
         });
         assert!(!app.dirty);
+    }
+
+    #[test]
+    fn paste_block_of_n_cells_is_single_undo_step() {
+        let mut app = App::new();
+        // Fill a 3×3 source block.
+        for row in 0..3_usize {
+            for col in 0..3_usize {
+                let val = format!("r{}c{}", row, col);
+                app.process_action(Action::EditCell((row, col), val));
+            }
+        }
+        app.process_action(Action::YankRange {
+            start: (0, 0),
+            end: (2, 2),
+        });
+        // Paste at (3, 0): fills rows 3–5, cols 0–2 (9 cells).
+        app.process_action(Action::Paste((3, 0)));
+        for row in 3..6_usize {
+            for col in 0..3_usize {
+                assert!(
+                    app.sheet.get_cell((row, col)).is_some(),
+                    "expected cell ({row},{col}) to be filled after paste"
+                );
+            }
+        }
+        // A single undo should clear all 9 pasted cells.
+        app.process_action(Action::Undo);
+        for row in 3..6_usize {
+            for col in 0..3_usize {
+                assert!(
+                    app.sheet.get_cell((row, col)).is_none(),
+                    "expected cell ({row},{col}) to be empty after single undo"
+                );
+            }
+        }
     }
 
     // ── Help ────────────────────────────────────────────────────────────────
@@ -2594,6 +2803,266 @@ mod tests {
             app.sheet.get_cell((1, 0)).unwrap().value,
             cell_sheet_core::model::CellValue::Number(10.0),
             "A2 must be updated after outermost commit"
+        );
+    }
+
+    // ── dot-repeat (#33) ────────────────────────────────────────────────────
+
+    #[test]
+    fn dot_with_no_last_change_is_noop() {
+        let mut app = App::new();
+        app.cursor = (2, 3);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(app.cursor, (2, 3));
+        assert!(app.sheet.get_cell((2, 3)).is_none());
+    }
+
+    #[test]
+    fn dot_repeats_edit_cell_at_new_cursor() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("x")
+        );
+    }
+
+    #[test]
+    fn dot_preserves_last_change_for_next_dot() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        app.cursor = (0, 2);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("x")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_clear_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::ClearCell((0, 0)));
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn dot_repeats_dd_at_new_row() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((1, 0), "b".into()));
+        app.process_action(Action::DeleteRow { start: 0, count: 1 });
+        app.cursor = (1, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+    }
+
+    #[test]
+    fn dot_after_undo_does_not_undo_again() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        app.cursor = (0, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("x")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_paste() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::Paste((0, 1)));
+        app.cursor = (0, 2);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_paste_before() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::PasteBefore((0, 1)));
+        app.cursor = (0, 2);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_clear_range_with_same_shape() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::EditCell((1, 0), "c".into()));
+        app.process_action(Action::EditCell((1, 1), "d".into()));
+        // Clear 1×2 range at row 0
+        app.process_action(Action::ClearRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        // Dot at (1, 0) should clear (1,0)–(1,1)
+        app.cursor = (1, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+        assert!(app.sheet.get_cell((1, 1)).is_none());
+    }
+
+    // ── Ctrl+a / Ctrl+x increment/decrement (#34) ───────────────────────
+
+    #[test]
+    fn adjust_number_increments_numeric_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("6")
+        );
+    }
+
+    #[test]
+    fn adjust_number_decrements_numeric_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "10".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: -1,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("9")
+        );
+    }
+
+    #[test]
+    fn adjust_number_with_count_applies_full_delta() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "3".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 5,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("8")
+        );
+    }
+
+    #[test]
+    fn adjust_number_triggers_dependent_recalculation() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::EditCell((0, 1), "=A1+1".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        // A1 is now 6, so B1 (=A1+1) should be 7
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("6")
+        );
+        let b1_val = app.sheet.get_cell((0, 1)).map(|c| c.value.clone()).unwrap();
+        assert_eq!(b1_val, cell_sheet_core::model::CellValue::Number(7.0));
+    }
+
+    #[test]
+    fn adjust_number_on_formula_cell_is_noop_with_status() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        let raw_before = app.sheet.get_cell((0, 0)).map(|c| c.raw.clone());
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        // Cell unchanged
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.clone()),
+            raw_before
+        );
+        // Status message set
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("E: Cannot increment a formula")
+        );
+    }
+
+    #[test]
+    fn adjust_number_on_text_cell_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn adjust_number_on_empty_cell_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+    }
+
+    #[test]
+    fn adjust_number_is_undoable() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("5")
+        );
+    }
+
+    #[test]
+    fn adjust_number_sets_last_change_for_dot_repeat() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::EditCell((1, 0), "10".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        // Move cursor and repeat with `.` — should increment (1,0) by 1
+        app.cursor = (1, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("11")
         );
     }
 }
