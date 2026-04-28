@@ -183,6 +183,13 @@ pub enum Action {
         end: CellPos,
         op: CaseOp,
     },
+    /// Increment (`delta > 0`) or decrement (`delta < 0`) the numeric value
+    /// of a cell by `delta`. No-op on formula cells (sets a status message)
+    /// and on non-numeric / empty cells.
+    AdjustNumber {
+        pos: CellPos,
+        delta: i64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
