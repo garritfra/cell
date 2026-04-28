@@ -845,6 +845,7 @@ impl App {
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }
+            Action::RepeatLastChange => {}
             Action::Open(_) | Action::Resize => {}
         }
     }
