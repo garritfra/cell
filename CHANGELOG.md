@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Key presses on Windows no longer double-fire: crossterm emits both a key-press
+  and a key-release event on Windows, so key release events are now ignored
+  ([#50](https://github.com/garritfra/cell/pull/50))
+
 ## 0.3.0 (2026-04-27)
 
 ### Fixed
