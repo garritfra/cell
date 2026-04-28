@@ -4,6 +4,11 @@
 
 ### Added
 
+- Command-mode history: in the `:` prompt, `↑` / `↓` cycle through
+  previously executed commands (oldest to newest). The in-progress input is
+  saved and restored when stepping past the newest entry. History is
+  session-only and consecutive duplicates are skipped
+  ([#62](https://github.com/garritfra/cell/pull/62))
 - Operator-pending motion counts: a count typed *between* the operator and the
   motion now works as in vim — `d3j` clears the current row and 3 rows below,
   `d2k` clears 2 rows above plus the current row, `y3l` yanks the current cell

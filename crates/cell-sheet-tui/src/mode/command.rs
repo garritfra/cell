@@ -101,6 +101,8 @@ pub fn handle_command_key(key: KeyEvent, command_buffer: &str) -> CommandAction 
         KeyCode::Esc => CommandAction::Cancel,
         KeyCode::Enter => CommandAction::Execute(command_buffer.to_string()),
         KeyCode::Backspace => CommandAction::Backspace,
+        KeyCode::Up => CommandAction::HistoryPrev,
+        KeyCode::Down => CommandAction::HistoryNext,
         KeyCode::Char(c) => CommandAction::InsertChar(c),
         _ => CommandAction::Noop,
     }
@@ -113,6 +115,8 @@ pub enum CommandAction {
     Backspace,
     Execute(String),
     Cancel,
+    HistoryPrev,
+    HistoryNext,
 }
 
 #[cfg(test)]
