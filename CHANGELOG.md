@@ -2,7 +2,27 @@
 
 ## Unreleased
 
+### Fixed
+
+- `ChangeRange` (`c` in Visual mode) now calls `mark_dirty` on dependents and
+  triggers a single topological recalculation after clearing the range.
+  Previously, formulas that referenced cleared cells kept stale values (#8).
+- `DeleteRow` (`dd` / `Ndd`) now calls `mark_dirty` on dependents and triggers
+  a single topological recalculation after clearing the row(s). Previously,
+  formulas that referenced deleted cells kept stale values (#8).
+
 ### Added
+
+- `App::begin_batch` / `App::commit_batch` API for deferred recalculation.
+  Wrap any sequence of `EditCell` actions in a batch to pay the O(graph)
+  topological-recalc cost once instead of once per cell. All built-in
+  multi-cell paths (paste, clear-range, delete-row, undo/redo of ranges) now
+  route through this API, making the deferred-recalc invariant explicit and
+  correctly nestable (#8).
+- Criterion benchmarks in `cell-sheet-core` (`cargo bench -p cell-sheet-core`):
+  `edit_cells/unbatched` vs `edit_cells/batched` (demonstrating N× speedup),
+  `recalculate/fanout` (single-pass cost at various formula counts), and
+  `mark_dirty/deep_chain` (BFS propagation depth) (#8).
 
 - Vim-style numeric count prefix in normal mode: type digits before a motion or
   operator to repeat or scale it. `5j` moves five rows down, `10G` jumps to row
