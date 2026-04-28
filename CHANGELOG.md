@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.1 (2026-04-28)
+
 ### Fixed
 
 - Key presses on Windows no longer double-fire: crossterm emits both a key-press
