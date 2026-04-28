@@ -22,6 +22,7 @@ pub fn render(
     app: &App,
     selection: Option<(CellPos, CellPos)>,
     insert_cursor: usize,
+    partial_command: Option<&str>,
 ) {
     if app.mode == Mode::Help {
         frame.render_widget(
@@ -97,6 +98,7 @@ pub fn render(
             dirty: app.dirty,
             file_name,
             message: app.status_message.as_deref(),
+            partial_command,
         },
         chunks[2],
     );

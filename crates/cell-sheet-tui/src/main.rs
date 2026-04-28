@@ -172,8 +172,27 @@ fn run_loop(
 
         let selection = visual_state.as_ref().map(|vs| vs.selection(app.cursor));
         let ic = insert_cursor;
+        // Build vim-style `showcmd` for normal mode: e.g. `5`, `5d`, `g`,
+        // `5g`. Other modes don't have a partial command to display.
+        let partial_command = if app.mode == Mode::Normal {
+            let mut s = String::new();
+            if let Some(n) = normal_state.pending_count() {
+                s.push_str(&n.to_string());
+            }
+            if let Some(c) = normal_state.pending_op() {
+                s.push(c);
+            }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        } else {
+            None
+        };
+        let partial_command_ref = partial_command.as_deref();
         terminal.draw(|frame| {
-            render::render(frame, app, selection, ic);
+            render::render(frame, app, selection, ic, partial_command_ref);
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {

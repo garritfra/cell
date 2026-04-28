@@ -39,10 +39,10 @@ impl VisualState {
     pub fn handle_key(&self, key: KeyEvent, app: &App) -> Action {
         let (start, end) = self.selection(app.cursor);
         match key.code {
-            KeyCode::Char('h') | KeyCode::Left => Action::MoveCursor(Direction::Left),
-            KeyCode::Char('j') | KeyCode::Down => Action::MoveCursor(Direction::Down),
-            KeyCode::Char('k') | KeyCode::Up => Action::MoveCursor(Direction::Up),
-            KeyCode::Char('l') | KeyCode::Right => Action::MoveCursor(Direction::Right),
+            KeyCode::Char('h') | KeyCode::Left => Action::MoveCursor(Direction::Left, 1),
+            KeyCode::Char('j') | KeyCode::Down => Action::MoveCursor(Direction::Down, 1),
+            KeyCode::Char('k') | KeyCode::Up => Action::MoveCursor(Direction::Up, 1),
+            KeyCode::Char('l') | KeyCode::Right => Action::MoveCursor(Direction::Right, 1),
             KeyCode::Char('c') => Action::ChangeRange { start, end },
             KeyCode::Char('d') => Action::ClearRange { start, end },
             KeyCode::Char('y') => Action::YankRange { start, end },
@@ -91,7 +91,7 @@ mod tests {
         let state = VisualState::new((0, 0), VisualKind::Character);
         assert_eq!(
             state.handle_key(key(KeyCode::Char('j')), &app),
-            Action::MoveCursor(Direction::Down)
+            Action::MoveCursor(Direction::Down, 1)
         );
     }
 
