@@ -56,6 +56,7 @@ pub struct App {
     /// The in-progress command line saved when the user first presses ↑,
     /// restored when they press ↓ past the most recent entry.
     pub command_history_scratch: String,
+    pub last_change: Option<Action>,
 }
 
 const JUMP_LIST_CAP: usize = 100;
@@ -99,6 +100,7 @@ impl App {
             command_history: Vec::new(),
             command_history_idx: None,
             command_history_scratch: String::new(),
+            last_change: None,
         }
     }
 
@@ -168,6 +170,7 @@ impl App {
                 mark_dirty(&mut self.sheet, &self.deps, pos);
                 recalculate(&mut self.sheet, &self.deps);
                 self.dirty = true;
+                self.last_change = Some(Action::EditCell(pos, raw));
             }
             Action::ChangeMode(mode) => {
                 if mode == Mode::Insert {
@@ -845,8 +848,38 @@ impl App {
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }
-            Action::RepeatLastChange => {}
+            Action::RepeatLastChange => {
+                if let Some(change) = self.last_change.clone() {
+                    let saved = self.last_change.clone();
+                    let rebound = self.rebind_change_to_cursor(change);
+                    self.process_action(rebound);
+                    self.last_change = saved;
+                }
+            }
             Action::Open(_) | Action::Resize => {}
+        }
+    }
+
+    fn rebind_change_to_cursor(&self, action: Action) -> Action {
+        let cursor = self.cursor;
+        match action {
+            Action::EditCell(_, raw) => Action::EditCell(cursor, raw),
+            Action::ClearCell(_) => Action::ClearCell(cursor),
+            Action::ClearRange { start, end } => {
+                let dr = end.0.saturating_sub(start.0);
+                let dc = end.1.saturating_sub(start.1);
+                Action::ClearRange {
+                    start: cursor,
+                    end: (cursor.0 + dr, cursor.1 + dc),
+                }
+            }
+            Action::DeleteRow { count, .. } => Action::DeleteRow {
+                start: cursor.0,
+                count,
+            },
+            Action::Paste(_) => Action::Paste(cursor),
+            Action::PasteBefore(_) => Action::PasteBefore(cursor),
+            _ => action,
         }
     }
 
@@ -2566,6 +2599,43 @@ mod tests {
         assert!(
             !msg.contains("Non-standard delimiter"),
             "ForceSave should bypass delimiter warning, got: {msg:?}"
+        );
+    }
+
+    // ── dot-repeat (#33) ────────────────────────────────────────────────────
+
+    #[test]
+    fn dot_with_no_last_change_is_noop() {
+        let mut app = App::new();
+        app.cursor = (2, 3);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(app.cursor, (2, 3));
+        assert!(app.sheet.get_cell((2, 3)).is_none());
+    }
+
+    #[test]
+    fn dot_repeats_edit_cell_at_new_cursor() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("x")
+        );
+    }
+
+    #[test]
+    fn dot_preserves_last_change_for_next_dot() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        app.cursor = (0, 2);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("x")
         );
     }
 }
