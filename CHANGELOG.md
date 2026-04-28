@@ -9,6 +9,15 @@
   automatically. No-op with an error message on formula cells; no-op silently
   on text and empty cells. Repeatable with `.`
   ([#64](https://github.com/garritfra/cell/pull/64))
+- Pipe support: `cell` now reads CSV, TSV, and the native `.cell` format
+  from stdin when no file argument is given and stdin is not a terminal.
+  Both interactive mode (`cat data.csv | cell`) and headless mode
+  (`cat data.csv | cell --read A1`) are supported. CSV/TSV delimiter is
+  auto-detected from the piped content; `--delimiter` overrides it. The
+  `.cell` format is auto-detected via its `# cell v` magic header; passing
+  `--delimiter` together with cell-format input is an error. Using
+  `--write` without a file argument when reading from stdin is an error
+  ([#67](https://github.com/garritfra/cell/pull/67))
 - Normal mode `.` repeats the last cell-mutating change at the current cursor
   position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
   edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat
