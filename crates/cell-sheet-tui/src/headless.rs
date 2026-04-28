@@ -38,19 +38,34 @@ impl Format {
     }
 }
 
+/// Magic header for the native `.cell` text format. Both the existing
+/// writer (`write_cell_format`) and reader (`read_cell_format`) anchor on
+/// `# cell v1` as the first line, so detecting it on a stdin byte stream
+/// is unambiguous and safe to use to dispatch between the cell-format and
+/// CSV/TSV readers.
+const CELL_FORMAT_MAGIC: &[u8] = b"# cell v";
+
+/// Detect whether a stdin byte stream is in the native `.cell` format.
+/// Returns `Format::Cell` when the first line begins with the cell-format
+/// magic header, otherwise `Format::Csv` (CSV/TSV both go through
+/// `csv_io::read_csv`, with the delimiter sniffed separately).
+fn detect_stdin_format(data: &[u8]) -> Format {
+    if data.starts_with(CELL_FORMAT_MAGIC) {
+        Format::Cell
+    } else {
+        Format::Csv
+    }
+}
+
 #[derive(Debug)]
 pub struct Options {
     pub file: PathBuf,
+    /// Raw bytes read from stdin when no FILE was given and stdin is not a TTY.
+    pub stdin_data: Option<Vec<u8>>,
     pub reads: Vec<String>,
     pub evals: Vec<String>,
     pub writes: Vec<(String, String)>,
     pub delimiter: Option<u8>,
-}
-
-impl Options {
-    pub fn is_active(&self) -> bool {
-        !self.reads.is_empty() || !self.evals.is_empty() || !self.writes.is_empty()
-    }
 }
 
 fn resolve_delimiter(
@@ -78,14 +93,38 @@ fn resolve_delimiter(
 /// `out`. Errors are returned with a human-readable message; callers are
 /// responsible for emitting them to stderr and choosing an exit code.
 pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
-    let format = Format::from_path(&opts.file);
-    let delimiter = resolve_delimiter(&opts.file, format, opts.delimiter)
-        .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
-
-    let (mut sheet, mut deps) = load(&opts.file, format, delimiter)
-        .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
+    let (mut sheet, mut deps, file_ctx) = if let Some(ref data) = opts.stdin_data {
+        if !opts.writes.is_empty() {
+            return Err(
+                "cannot use --write when reading from stdin; provide a FILE argument instead"
+                    .to_string(),
+            );
+        }
+        let format = detect_stdin_format(data);
+        if matches!(format, Format::Cell) && opts.delimiter.is_some() {
+            return Err(
+                "--delimiter has no effect on .cell-format input piped to stdin".to_string(),
+            );
+        }
+        let delimiter = opts
+            .delimiter
+            .unwrap_or_else(|| csv_io::sniff_delimiter(data));
+        let (sheet, deps) = load_from_bytes(data, format, delimiter)
+            .map_err(|e| format!("failed to parse stdin: {e}"))?;
+        (sheet, deps, None::<(Format, u8)>)
+    } else {
+        let format = Format::from_path(&opts.file);
+        let delimiter = resolve_delimiter(&opts.file, format, opts.delimiter)
+            .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
+        let (sheet, deps) = load(&opts.file, format, delimiter)
+            .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
+        (sheet, deps, Some((format, delimiter)))
+    };
 
     if !opts.writes.is_empty() {
+        // Only reachable when opts.stdin_data is None (stdin + writes already errored above).
+        let (format, delimiter) = file_ctx
+            .ok_or_else(|| "internal error: --write reached without a file path".to_string())?;
         for (idx, (ref_str, value)) in opts.writes.iter().enumerate() {
             let pos = parse_single_ref(ref_str).ok_or_else(|| {
                 format!(
@@ -131,6 +170,31 @@ fn load(
             let file = std::fs::File::open(path)?;
             cell_format::read_cell_format(file)?
         }
+    };
+    let mut deps = DepGraph::new();
+
+    let formula_cells: Vec<_> = sheet
+        .cells
+        .iter()
+        .filter(|(_, cell)| cell.raw.starts_with('='))
+        .map(|(pos, cell)| (*pos, cell.raw.clone()))
+        .collect();
+    for (pos, raw) in formula_cells {
+        set_formula(&mut sheet, &mut deps, pos, &raw);
+    }
+    recalculate(&mut sheet, &deps);
+
+    Ok((sheet, deps))
+}
+
+fn load_from_bytes(
+    data: &[u8],
+    format: Format,
+    delimiter: u8,
+) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
+    let mut sheet = match format {
+        Format::Cell => cell_format::read_cell_format(data)?,
+        Format::Csv | Format::Tsv => csv_io::read_csv(data, delimiter)?,
     };
     let mut deps = DepGraph::new();
 
@@ -245,5 +309,96 @@ mod tests {
             Some(((0, 0), (2, 1))),
             "range corners should be normalised so iteration is forward"
         );
+    }
+
+    #[test]
+    fn run_reads_from_stdin_data() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(b"10,20\n30,40\n".to_vec()),
+            reads: vec!["A1".to_string()],
+            evals: vec![],
+            writes: vec![],
+            delimiter: None,
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "10\n");
+    }
+
+    #[test]
+    fn run_evals_from_stdin_data() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(b"1\n2\n3\n4\n".to_vec()),
+            reads: vec![],
+            evals: vec!["=SUM(A1:A4)".to_string()],
+            writes: vec![],
+            delimiter: None,
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "10\n");
+    }
+
+    #[test]
+    fn run_rejects_write_with_stdin_data() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(b"10,20\n".to_vec()),
+            reads: vec![],
+            evals: vec![],
+            writes: vec![("A1".to_string(), "99".to_string())],
+            delimiter: None,
+        };
+        let mut out = Vec::new();
+        let err = run(&opts, &mut out).unwrap_err();
+        assert!(err.contains("--write"), "expected --write in error: {err}");
+    }
+
+    #[test]
+    fn run_stdin_empty_produces_empty_sheet() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(vec![]),
+            reads: vec!["A1".to_string()],
+            evals: vec![],
+            writes: vec![],
+            delimiter: None,
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        // Empty stdin yields an empty sheet; A1 is blank → empty string
+        assert_eq!(String::from_utf8(out).unwrap(), "\n");
+    }
+
+    #[test]
+    fn run_stdin_respects_explicit_delimiter() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(b"a|b|c\n".to_vec()),
+            reads: vec!["B1".to_string()],
+            evals: vec![],
+            writes: vec![],
+            delimiter: Some(b'|'),
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "b\n");
+    }
+
+    #[test]
+    fn run_sniffs_tsv_from_stdin_data() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(b"hello\tworld\n".to_vec()),
+            reads: vec!["B1".to_string()],
+            evals: vec![],
+            writes: vec![],
+            delimiter: None,
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "world\n");
     }
 }

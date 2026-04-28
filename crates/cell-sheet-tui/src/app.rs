@@ -1,4 +1,4 @@
-use crate::action::{Action, CommandKind, Direction, Mode, SearchDirection};
+use crate::action::{Action, CaseOp, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
 use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
@@ -877,6 +877,69 @@ impl App {
                     self.last_change = Some(saved);
                 }
             }
+            Action::CaseOpCell { pos, op } => {
+                let raw = self
+                    .sheet
+                    .get_cell(pos)
+                    .map(|c| c.raw.clone())
+                    .unwrap_or_default();
+                if raw.is_empty() {
+                    if op == CaseOp::ToggleFirst {
+                        self.process_action(Action::MoveCursor(Direction::Right, 1));
+                    }
+                    return;
+                }
+                if raw.starts_with('=') {
+                    self.status_message = Some("Cannot change case of a formula cell".into());
+                    return;
+                }
+                let new_raw = apply_case_op(&raw, op);
+                if new_raw != raw {
+                    self.undo_stack.push(UndoEntry::CellEdit {
+                        pos,
+                        old_raw: raw,
+                        new_raw: new_raw.clone(),
+                    });
+                    self.sheet.set_cell(pos, &new_raw);
+                    mark_dirty(&mut self.sheet, &self.deps, pos);
+                    recalculate(&mut self.sheet, &self.deps);
+                    self.dirty = true;
+                }
+                self.last_change = Some(Action::CaseOpCell { pos, op });
+                if op == CaseOp::ToggleFirst {
+                    self.process_action(Action::MoveCursor(Direction::Right, 1));
+                }
+            }
+            Action::CaseOpRange { start, end, op } => {
+                let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
+                let mut changes: Vec<(CellPos, String, String)> = Vec::new();
+                for row in start.0..=end.0 {
+                    for col in start.1..=max_col {
+                        let raw = self
+                            .sheet
+                            .get_cell((row, col))
+                            .map(|c| c.raw.clone())
+                            .unwrap_or_default();
+                        if raw.is_empty() || raw.starts_with('=') {
+                            continue;
+                        }
+                        let new_raw = apply_case_op(&raw, op);
+                        if new_raw != raw {
+                            changes.push(((row, col), raw, new_raw));
+                        }
+                    }
+                }
+                if !changes.is_empty() {
+                    for (pos, _, new_raw) in &changes {
+                        self.sheet.set_cell(*pos, new_raw);
+                        mark_dirty(&mut self.sheet, &self.deps, *pos);
+                    }
+                    recalculate(&mut self.sheet, &self.deps);
+                    self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
+                    self.dirty = true;
+                }
+                self.last_change = Some(Action::CaseOpRange { start, end, op });
+            }
             Action::AdjustNumber { pos, delta } => {
                 if let Some(cell) = self.sheet.get_cell(pos) {
                     let raw = cell.raw.clone();
@@ -922,6 +985,7 @@ impl App {
             },
             Action::Paste(_) => Action::Paste(cursor),
             Action::PasteBefore(_) => Action::PasteBefore(cursor),
+            Action::CaseOpCell { op, .. } => Action::CaseOpCell { pos: cursor, op },
             Action::AdjustNumber { delta, .. } => Action::AdjustNumber { pos: cursor, delta },
             _ => action,
         }
@@ -1173,6 +1237,41 @@ impl App {
             self.deps.remove(pos);
         }
         mark_dirty(&mut self.sheet, &self.deps, pos);
+    }
+}
+
+fn apply_case_op(s: &str, op: CaseOp) -> String {
+    match op {
+        CaseOp::ToLower => s.to_lowercase(),
+        CaseOp::ToUpper => s.to_uppercase(),
+        CaseOp::ToggleAll => s
+            .chars()
+            .map(|c| {
+                if c.is_uppercase() {
+                    c.to_lowercase().next().unwrap_or(c)
+                } else if c.is_lowercase() {
+                    c.to_uppercase().next().unwrap_or(c)
+                } else {
+                    c
+                }
+            })
+            .collect(),
+        CaseOp::ToggleFirst => {
+            let mut chars = s.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => {
+                    let toggled = if c.is_uppercase() {
+                        c.to_lowercase().next().unwrap_or(c)
+                    } else if c.is_lowercase() {
+                        c.to_uppercase().next().unwrap_or(c)
+                    } else {
+                        c
+                    };
+                    std::iter::once(toggled).chain(chars).collect()
+                }
+            }
+        }
     }
 }
 
@@ -2904,6 +3003,197 @@ mod tests {
         assert_eq!(
             app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
             Some("hello")
+        );
+    }
+
+    // ── CaseOpCell / CaseOpRange ─────────────────────────────────────────────
+
+    #[test]
+    fn toggle_first_uppercases_first_char_of_lowercase() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToggleFirst,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("Hello")
+        );
+    }
+
+    #[test]
+    fn toggle_first_advances_cursor_right() {
+        let mut app = App::new();
+        app.cursor = (0, 0);
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToggleFirst,
+        });
+        assert_eq!(app.cursor, (0, 1));
+    }
+
+    #[test]
+    fn to_upper_uppercases_entire_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToUpper,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("FOO")
+        );
+    }
+
+    #[test]
+    fn to_lower_lowercases_entire_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "HELLO".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToLower,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn toggle_all_toggles_every_char() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "HeLLo".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToggleAll,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("hEllO")
+        );
+    }
+
+    #[test]
+    fn case_op_cell_formula_is_noop_with_status() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=SUM(A1:A5)".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToUpper,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("=SUM(A1:A5)")
+        );
+        assert!(app.status_message.is_some());
+    }
+
+    #[test]
+    fn case_op_cell_is_undoable() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToUpper,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("HELLO")
+        );
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn case_op_range_uppercases_all_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::EditCell((0, 1), "BAR".into()));
+        app.process_action(Action::EditCell((0, 2), "baz".into()));
+        app.process_action(Action::CaseOpRange {
+            start: (0, 0),
+            end: (0, 2),
+            op: CaseOp::ToUpper,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("FOO")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("BAR")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("BAZ")
+        );
+    }
+
+    #[test]
+    fn case_op_range_skips_formula_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::EditCell((0, 1), "=A1".into()));
+        app.process_action(Action::CaseOpRange {
+            start: (0, 0),
+            end: (0, 1),
+            op: CaseOp::ToUpper,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("HELLO")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("=A1")
+        );
+    }
+
+    #[test]
+    fn case_op_range_is_undoable() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "foo".into()));
+        app.process_action(Action::EditCell((0, 1), "bar".into()));
+        app.process_action(Action::CaseOpRange {
+            start: (0, 0),
+            end: (0, 1),
+            op: CaseOp::ToUpper,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("FOO")
+        );
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("foo")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("bar")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_case_op_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::EditCell((0, 1), "world".into()));
+        app.process_action(Action::CaseOpCell {
+            pos: (0, 0),
+            op: CaseOp::ToUpper,
+        });
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("WORLD")
         );
     }
 

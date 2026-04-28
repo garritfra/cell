@@ -16,7 +16,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::io;
+use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -74,23 +74,40 @@ fn main() -> ExitCode {
         None => None,
     };
 
-    let opts = headless::Options {
-        file: cli.file.clone().unwrap_or_default(),
-        reads: cli.read,
-        evals: cli.eval,
-        writes: cli
-            .write
-            .chunks_exact(2)
-            .map(|c| (c[0].clone(), c[1].clone()))
-            .collect(),
-        delimiter: explicit_delimiter,
+    // Read stdin before enabling raw mode. Only done when no FILE was given and
+    // stdin is not an interactive terminal (i.e. data is being piped in).
+    // Crossterm 0.29 opens /dev/tty for keyboard events when stdin is
+    // redirected, so the TUI still receives input afterwards.
+    let stdin_data: Option<Vec<u8>> = if cli.file.is_none() && !io::stdin().is_terminal() {
+        let mut buf = Vec::new();
+        if let Err(e) = io::stdin().lock().read_to_end(&mut buf) {
+            eprintln!("error: failed to read stdin: {e}");
+            return ExitCode::FAILURE;
+        }
+        Some(buf)
+    } else {
+        None
     };
 
-    if opts.is_active() {
-        if cli.file.is_none() {
+    let has_headless_ops = !cli.read.is_empty() || !cli.eval.is_empty() || !cli.write.is_empty();
+
+    if has_headless_ops {
+        if cli.file.is_none() && stdin_data.is_none() {
             eprintln!("error: a FILE argument is required for --read/--eval/--write");
             return ExitCode::from(2);
         }
+        let opts = headless::Options {
+            file: cli.file.clone().unwrap_or_default(),
+            stdin_data,
+            reads: cli.read,
+            evals: cli.eval,
+            writes: cli
+                .write
+                .chunks_exact(2)
+                .map(|c| (c[0].clone(), c[1].clone()))
+                .collect(),
+            delimiter: explicit_delimiter,
+        };
         let mut stdout = io::stdout().lock();
         return match headless::run(&opts, &mut stdout) {
             Ok(()) => ExitCode::SUCCESS,
@@ -101,7 +118,7 @@ fn main() -> ExitCode {
         };
     }
 
-    match run_tui(cli.file.as_deref(), explicit_delimiter) {
+    match run_tui(cli.file.as_deref(), explicit_delimiter, stdin_data) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
@@ -113,11 +130,14 @@ fn main() -> ExitCode {
 fn run_tui(
     file: Option<&std::path::Path>,
     explicit_delimiter: Option<u8>,
+    stdin_data: Option<Vec<u8>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
 
     if let Some(path) = file {
         load_file(&mut app, path, explicit_delimiter)?;
+    } else if let Some(data) = stdin_data {
+        load_stdin_data(&mut app, data, explicit_delimiter)?;
     }
 
     enable_raw_mode()?;
@@ -176,6 +196,46 @@ fn load_file(
     app.file_path = Some(path.to_path_buf());
 
     // Register formulas in the dependency graph and evaluate them.
+    let formula_cells: Vec<_> = app
+        .sheet
+        .cells
+        .iter()
+        .filter(|(_, cell)| cell.raw.starts_with('='))
+        .map(|(pos, cell)| (*pos, cell.raw.clone()))
+        .collect();
+    for (pos, raw) in formula_cells {
+        set_formula(&mut app.sheet, &mut app.deps, pos, &raw);
+    }
+    recalculate(&mut app.sheet, &app.deps);
+
+    Ok(())
+}
+
+fn load_stdin_data(
+    app: &mut App,
+    data: Vec<u8>,
+    explicit_delimiter: Option<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use cell_sheet_core::formula::deps::{recalculate, set_formula};
+
+    // Detect the native .cell format by its magic header. Anything else is
+    // treated as CSV/TSV with delimiter sniffing (or an explicit override).
+    if data.starts_with(b"# cell v") {
+        if explicit_delimiter.is_some() {
+            return Err("--delimiter has no effect on .cell-format input piped to stdin".into());
+        }
+        app.sheet = cell_sheet_core::io::cell_format::read_cell_format(data.as_slice())?;
+        app.file_format = FileFormat::Cell;
+        // delimiter stays at its default; .cell format doesn't use one
+    } else {
+        let delimiter =
+            explicit_delimiter.unwrap_or_else(|| cell_sheet_core::io::csv::sniff_delimiter(&data));
+        app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
+        app.file_format = FileFormat::Csv;
+        app.delimiter = delimiter;
+    }
+    // file_path stays None — unnamed buffer; :w <path> still works to save
+
     let formula_cells: Vec<_> = app
         .sheet
         .cells
@@ -298,6 +358,7 @@ fn run_loop(
                                     | Action::ClearRange { .. }
                                     | Action::YankRange { .. }
                                     | Action::ChangeRange { .. }
+                                    | Action::CaseOpRange { .. }
                             );
                             if exits {
                                 let anchor = vs.anchor;

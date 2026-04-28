@@ -15,11 +15,27 @@
   `recalculate/fanout` (single-pass cost at various formula counts), and
   `mark_dirty/deep_chain` (BFS propagation depth)
   ([#66](https://github.com/garritfra/cell/pull/66)).
+- Case operations on cell text: `~` toggles the case of the first character
+  and advances the cursor one column; `guu` lowercases the entire cell; `gUU`
+  uppercases the entire cell; `g~~` toggles the case of every character. In
+  Visual mode, `u` / `U` / `~` apply the corresponding operation to every
+  selected cell. Formula cells are always skipped — the status line reports a
+  message instead. All operations are undoable with `u`
+  ([#65](https://github.com/garritfra/cell/pull/65))
 - Normal mode `Ctrl+a` / `Ctrl+x` increment or decrement the number in the
   current cell by 1 (or `[count]`). Dependent formula cells re-evaluate
   automatically. No-op with an error message on formula cells; no-op silently
   on text and empty cells. Repeatable with `.`
   ([#64](https://github.com/garritfra/cell/pull/64))
+- Pipe support: `cell` now reads CSV, TSV, and the native `.cell` format
+  from stdin when no file argument is given and stdin is not a terminal.
+  Both interactive mode (`cat data.csv | cell`) and headless mode
+  (`cat data.csv | cell --read A1`) are supported. CSV/TSV delimiter is
+  auto-detected from the piped content; `--delimiter` overrides it. The
+  `.cell` format is auto-detected via its `# cell v` magic header; passing
+  `--delimiter` together with cell-format input is an error. Using
+  `--write` without a file argument when reading from stdin is an error
+  ([#67](https://github.com/garritfra/cell/pull/67))
 - Normal mode `.` repeats the last cell-mutating change at the current cursor
   position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
   edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat

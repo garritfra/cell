@@ -1,4 +1,4 @@
-use crate::action::{Action, Direction, Mode};
+use crate::action::{Action, CaseOp, Direction, Mode};
 use crate::app::App;
 use cell_sheet_core::model::CellPos;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -91,6 +91,30 @@ impl VisualState {
             KeyCode::Char('y') => {
                 self.pending_count = None;
                 Action::YankRange { start, end }
+            }
+            KeyCode::Char('u') => {
+                self.pending_count = None;
+                Action::CaseOpRange {
+                    start,
+                    end,
+                    op: CaseOp::ToLower,
+                }
+            }
+            KeyCode::Char('U') => {
+                self.pending_count = None;
+                Action::CaseOpRange {
+                    start,
+                    end,
+                    op: CaseOp::ToUpper,
+                }
+            }
+            KeyCode::Char('~') => {
+                self.pending_count = None;
+                Action::CaseOpRange {
+                    start,
+                    end,
+                    op: CaseOp::ToggleAll,
+                }
             }
             KeyCode::Esc => Action::ChangeMode(Mode::Normal),
             _ => {
@@ -249,5 +273,52 @@ mod tests {
             }
         );
         assert!(state.pending_count.is_none());
+    }
+
+    // --- visual case-op key-binding tests ---------------------------------
+
+    #[test]
+    fn u_emits_to_lower_range() {
+        let mut app = App::new();
+        app.cursor = (1, 2);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('u')), &app),
+            Action::CaseOpRange {
+                start: (0, 0),
+                end: (1, 2),
+                op: CaseOp::ToLower,
+            }
+        );
+    }
+
+    #[test]
+    fn shift_u_emits_to_upper_range() {
+        let mut app = App::new();
+        app.cursor = (0, 3);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('U')), &app),
+            Action::CaseOpRange {
+                start: (0, 0),
+                end: (0, 3),
+                op: CaseOp::ToUpper,
+            }
+        );
+    }
+
+    #[test]
+    fn tilde_emits_toggle_all_range() {
+        let mut app = App::new();
+        app.cursor = (2, 1);
+        let mut state = VisualState::new((0, 0), VisualKind::Character);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('~')), &app),
+            Action::CaseOpRange {
+                start: (0, 0),
+                end: (2, 1),
+                op: CaseOp::ToggleAll,
+            }
+        );
     }
 }
