@@ -624,7 +624,6 @@ impl App {
                     self.mode = Mode::Help;
                 }
             },
-<<<<<<< HEAD
             Action::ScrollCursorTop => {
                 self.viewport.top_on(self.cursor.0);
             }
@@ -731,6 +730,9 @@ impl App {
             Action::SetDelimiter(d) => {
                 self.delimiter = d;
                 self.status_message = Some(format!("Delimiter set to '{}'", d as char));
+            }
+            Action::SetStatus(msg) => {
+                self.status_message = Some(msg);
             }
             Action::Open(_) | Action::Resize => {}
         }

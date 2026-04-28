@@ -38,7 +38,9 @@ pub fn parse_command(input: &str) -> Action {
             {
                 Action::SetDelimiter(c as u8)
             }
-            _ => Action::Noop,
+            _ => Action::SetStatus(
+                "Invalid delimiter: must be a single non-alphanumeric ASCII character (not \", \\n, \\r).".into()
+            ),
         };
     }
 
@@ -215,24 +217,39 @@ mod tests {
     }
 
     #[test]
-    fn parse_set_delimiter_empty_is_noop() {
-        assert_eq!(parse_command("set delimiter="), Action::Noop);
+    fn parse_set_delimiter_empty_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter="),
+            Action::SetStatus(_)
+        ));
     }
 
     #[test]
-    fn parse_set_delimiter_alphanumeric_is_noop() {
-        assert_eq!(parse_command("set delimiter=a"), Action::Noop);
-        assert_eq!(parse_command("set delimiter=1"), Action::Noop);
+    fn parse_set_delimiter_alphanumeric_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=a"),
+            Action::SetStatus(_)
+        ));
+        assert!(matches!(
+            parse_command("set delimiter=1"),
+            Action::SetStatus(_)
+        ));
     }
 
     #[test]
-    fn parse_set_delimiter_multi_char_is_noop() {
-        assert_eq!(parse_command("set delimiter=||"), Action::Noop);
+    fn parse_set_delimiter_multi_char_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=||"),
+            Action::SetStatus(_)
+        ));
     }
 
     #[test]
-    fn parse_set_delimiter_non_ascii_is_noop() {
-        assert_eq!(parse_command("set delimiter=€"), Action::Noop);
+    fn parse_set_delimiter_non_ascii_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=€"),
+            Action::SetStatus(_)
+        ));
     }
 
     #[test]
@@ -243,9 +260,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_set_delimiter_quote_is_noop() {
-        // Double-quote must be rejected — it is the CSV quoting character
-        assert_eq!(parse_command("set delimiter=\""), Action::Noop);
+    fn parse_set_delimiter_quote_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=\""),
+            Action::SetStatus(_)
+        ));
     }
 
     fn key(code: KeyCode) -> KeyEvent {
