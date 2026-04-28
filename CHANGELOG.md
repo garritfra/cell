@@ -4,6 +4,17 @@
 
 ### Added
 
+- `App::begin_batch` / `App::commit_batch` API for deferred recalculation.
+  Wrap any sequence of `EditCell` actions in a batch to pay the O(graph)
+  topological-recalc cost once instead of once per cell. All built-in
+  multi-cell paths (paste, clear-range, delete-row, undo/redo of ranges) now
+  route through this API, making the deferred-recalc invariant explicit and
+  correctly nestable ([#66](https://github.com/garritfra/cell/pull/66)).
+- Criterion benchmarks in `cell-sheet-core` (`cargo bench -p cell-sheet-core`):
+  `edit_cells/unbatched` vs `edit_cells/batched` (demonstrating N× speedup),
+  `recalculate/fanout` (single-pass cost at various formula counts), and
+  `mark_dirty/deep_chain` (BFS propagation depth)
+  ([#66](https://github.com/garritfra/cell/pull/66)).
 - Case operations on cell text: `~` toggles the case of the first character
   and advances the cursor one column; `guu` lowercases the entire cell; `gUU`
   uppercases the entire cell; `g~~` toggles the case of every character. In
@@ -65,6 +76,14 @@
 
 ### Fixed
 
+- `ChangeRange` (`c` in Visual mode) now calls `mark_dirty` on dependents and
+  triggers a single topological recalculation after clearing the range.
+  Previously, formulas that referenced cleared cells kept stale values
+  ([#66](https://github.com/garritfra/cell/pull/66)).
+- `DeleteRow` (`dd` / `Ndd`) now calls `mark_dirty` on dependents and triggers
+  a single topological recalculation after clearing the row(s). Previously,
+  formulas that referenced deleted cells kept stale values
+  ([#66](https://github.com/garritfra/cell/pull/66)).
 - Visual `c` (`ChangeRange`) now records a single undo step for the entire
   range, consistent with `dd`, visual `d`, and paste
   ([#60](https://github.com/garritfra/cell/pull/60)).
