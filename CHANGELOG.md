@@ -4,6 +4,11 @@
 
 ### Added
 
+- Normal mode `Ctrl+a` / `Ctrl+x` increment or decrement the number in the
+  current cell by 1 (or `[count]`). Dependent formula cells re-evaluate
+  automatically. No-op with an error message on formula cells; no-op silently
+  on text and empty cells. Repeatable with `.`
+  ([#64](https://github.com/garritfra/cell/pull/64))
 - Normal mode `.` repeats the last cell-mutating change at the current cursor
   position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
   edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat

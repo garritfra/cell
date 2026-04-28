@@ -864,6 +864,28 @@ impl App {
                     self.last_change = Some(saved);
                 }
             }
+            Action::AdjustNumber { pos, delta } => {
+                if let Some(cell) = self.sheet.get_cell(pos) {
+                    let raw = cell.raw.clone();
+                    if raw.starts_with('=') {
+                        self.status_message = Some("E: Cannot increment a formula".into());
+                    } else if let Ok(n) = raw.parse::<f64>() {
+                        let new_raw = (n + delta as f64).to_string();
+                        self.undo_stack.push(UndoEntry::CellEdit {
+                            pos,
+                            old_raw: raw,
+                            new_raw: new_raw.clone(),
+                        });
+                        self.sheet.set_cell(pos, &new_raw);
+                        mark_dirty(&mut self.sheet, &self.deps, pos);
+                        recalculate(&mut self.sheet, &self.deps);
+                        self.dirty = true;
+                    }
+                    // text or empty string: no-op
+                }
+                // empty cell (not in sheet): no-op
+                self.last_change = Some(Action::AdjustNumber { pos, delta });
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -887,6 +909,7 @@ impl App {
             },
             Action::Paste(_) => Action::Paste(cursor),
             Action::PasteBefore(_) => Action::PasteBefore(cursor),
+            Action::AdjustNumber { delta, .. } => Action::AdjustNumber { pos: cursor, delta },
             _ => action,
         }
     }
@@ -2728,5 +2751,145 @@ mod tests {
         app.process_action(Action::RepeatLastChange);
         assert!(app.sheet.get_cell((1, 0)).is_none());
         assert!(app.sheet.get_cell((1, 1)).is_none());
+    }
+
+    // ── Ctrl+a / Ctrl+x increment/decrement (#34) ───────────────────────
+
+    #[test]
+    fn adjust_number_increments_numeric_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("6")
+        );
+    }
+
+    #[test]
+    fn adjust_number_decrements_numeric_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "10".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: -1,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("9")
+        );
+    }
+
+    #[test]
+    fn adjust_number_with_count_applies_full_delta() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "3".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 5,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("8")
+        );
+    }
+
+    #[test]
+    fn adjust_number_triggers_dependent_recalculation() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::EditCell((0, 1), "=A1+1".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        // A1 is now 6, so B1 (=A1+1) should be 7
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("6")
+        );
+        let b1_val = app.sheet.get_cell((0, 1)).map(|c| c.value.clone()).unwrap();
+        assert_eq!(b1_val, cell_sheet_core::model::CellValue::Number(7.0));
+    }
+
+    #[test]
+    fn adjust_number_on_formula_cell_is_noop_with_status() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        let raw_before = app.sheet.get_cell((0, 0)).map(|c| c.raw.clone());
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        // Cell unchanged
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.clone()),
+            raw_before
+        );
+        // Status message set
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("E: Cannot increment a formula")
+        );
+    }
+
+    #[test]
+    fn adjust_number_on_text_cell_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn adjust_number_on_empty_cell_is_noop() {
+        let mut app = App::new();
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+    }
+
+    #[test]
+    fn adjust_number_is_undoable() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("5")
+        );
+    }
+
+    #[test]
+    fn adjust_number_sets_last_change_for_dot_repeat() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::EditCell((1, 0), "10".into()));
+        app.process_action(Action::AdjustNumber {
+            pos: (0, 0),
+            delta: 1,
+        });
+        // Move cursor and repeat with `.` — should increment (1,0) by 1
+        app.cursor = (1, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("11")
+        );
     }
 }
