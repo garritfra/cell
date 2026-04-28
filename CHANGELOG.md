@@ -10,7 +10,7 @@
   Visual mode, `u` / `U` / `~` apply the corresponding operation to every
   selected cell. Formula cells are always skipped — the status line reports a
   message instead. All operations are undoable with `u`
-  ([#38](https://github.com/garritfra/cell/pull/38))
+  ([#65](https://github.com/garritfra/cell/pull/65))
 - Normal mode `.` repeats the last cell-mutating change at the current cursor
   position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
   edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat
