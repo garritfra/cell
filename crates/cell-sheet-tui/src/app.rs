@@ -1409,6 +1409,42 @@ mod tests {
         assert!(!app.dirty);
     }
 
+    #[test]
+    fn paste_block_of_n_cells_is_single_undo_step() {
+        let mut app = App::new();
+        // Fill a 3×3 source block.
+        for row in 0..3_usize {
+            for col in 0..3_usize {
+                let val = format!("r{}c{}", row, col);
+                app.process_action(Action::EditCell((row, col), val));
+            }
+        }
+        app.process_action(Action::YankRange {
+            start: (0, 0),
+            end: (2, 2),
+        });
+        // Paste at (3, 0): fills rows 3–5, cols 0–2 (9 cells).
+        app.process_action(Action::Paste((3, 0)));
+        for row in 3..6_usize {
+            for col in 0..3_usize {
+                assert!(
+                    app.sheet.get_cell((row, col)).is_some(),
+                    "expected cell ({row},{col}) to be filled after paste"
+                );
+            }
+        }
+        // A single undo should clear all 9 pasted cells.
+        app.process_action(Action::Undo);
+        for row in 3..6_usize {
+            for col in 0..3_usize {
+                assert!(
+                    app.sheet.get_cell((row, col)).is_none(),
+                    "expected cell ({row},{col}) to be empty after single undo"
+                );
+            }
+        }
+    }
+
     // ── Help ────────────────────────────────────────────────────────────────
 
     #[test]
