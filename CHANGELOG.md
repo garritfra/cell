@@ -4,6 +4,13 @@
 
 ### Added
 
+- Case operations on cell text: `~` toggles the case of the first character
+  and advances the cursor one column; `guu` lowercases the entire cell; `gUU`
+  uppercases the entire cell; `g~~` toggles the case of every character. In
+  Visual mode, `u` / `U` / `~` apply the corresponding operation to every
+  selected cell. Formula cells are always skipped — the status line reports a
+  message instead. All operations are undoable with `u`
+  ([#65](https://github.com/garritfra/cell/pull/65))
 - Normal mode `Ctrl+a` / `Ctrl+x` increment or decrement the number in the
   current cell by 1 (or `[count]`). Dependent formula cells re-evaluate
   automatically. No-op with an error message on formula cells; no-op silently

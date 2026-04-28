@@ -10,6 +10,17 @@ pub enum Direction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CaseOp {
+    ToLower,
+    ToUpper,
+    /// Toggle every character's case.
+    ToggleAll,
+    /// Toggle only the first character's case; the handler also advances the
+    /// cursor right by one column (vim `~` semantics).
+    ToggleFirst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SearchDirection {
     Forward,
     Backward,
@@ -159,6 +170,19 @@ pub enum Action {
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,
+    /// Apply a case transformation to a single cell. `ToggleFirst` also
+    /// advances the cursor right by one column after the edit.
+    CaseOpCell {
+        pos: CellPos,
+        op: CaseOp,
+    },
+    /// Apply a case transformation to every non-formula cell in the range
+    /// `[start, end]` (inclusive). Formula cells in the range are skipped.
+    CaseOpRange {
+        start: CellPos,
+        end: CellPos,
+        op: CaseOp,
+    },
     /// Increment (`delta > 0`) or decrement (`delta < 0`) the numeric value
     /// of a cell by `delta`. No-op on formula cells (sets a status message)
     /// and on non-numeric / empty cells.

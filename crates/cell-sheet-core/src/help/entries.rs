@@ -317,6 +317,35 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         detail: "Repeat the last f / F find in the opposite direction.",
     },
     HelpEntry {
+        tags: &["~", "tilde"],
+        category: HelpCategory::Normal,
+        summary: "Toggle case of first character",
+        detail: "Toggle the case of the first character of the current cell's value\n\
+                 and advance the cursor one column to the right (vim `~` semantics\n\
+                 scoped to one cell). No-op on formula cells.",
+    },
+    HelpEntry {
+        tags: &["guu"],
+        category: HelpCategory::Normal,
+        summary: "Lowercase entire cell",
+        detail: "Convert every character in the current cell's value to lowercase.\n\
+                 No-op on formula cells. Undoable with u.",
+    },
+    HelpEntry {
+        tags: &["gUU"],
+        category: HelpCategory::Normal,
+        summary: "Uppercase entire cell",
+        detail: "Convert every character in the current cell's value to uppercase.\n\
+                 No-op on formula cells. Undoable with u.",
+    },
+    HelpEntry {
+        tags: &["g~~"],
+        category: HelpCategory::Normal,
+        summary: "Toggle case of entire cell",
+        detail: "Toggle the case of every character in the current cell's value\n\
+                 (uppercase ↔ lowercase). No-op on formula cells. Undoable with u.",
+    },
+    HelpEntry {
         tags: &["Ctrl+A"],
         category: HelpCategory::Normal,
         summary: "Increment number under cursor ([count]Ctrl+A)",
@@ -420,6 +449,30 @@ pub static VISUAL_ENTRIES: &[HelpEntry] = &[
         category: HelpCategory::Visual,
         summary: "Cancel selection",
         detail: "Exit Visual mode and return to Normal mode without\nmodifying any cells.",
+    },
+    HelpEntry {
+        tags: &["u-visual"],
+        category: HelpCategory::Visual,
+        summary: "Lowercase selection",
+        detail: "Convert every character in every selected cell to lowercase.\n\
+                 Formula cells in the selection are skipped. Undoable with u\n\
+                 after returning to Normal mode.",
+    },
+    HelpEntry {
+        tags: &["U-visual"],
+        category: HelpCategory::Visual,
+        summary: "Uppercase selection",
+        detail: "Convert every character in every selected cell to uppercase.\n\
+                 Formula cells in the selection are skipped. Undoable with u\n\
+                 after returning to Normal mode.",
+    },
+    HelpEntry {
+        tags: &["~-visual"],
+        category: HelpCategory::Visual,
+        summary: "Toggle case of selection",
+        detail: "Toggle the case of every character in every selected cell\n\
+                 (uppercase ↔ lowercase). Formula cells in the selection are\n\
+                 skipped. Undoable with u after returning to Normal mode.",
     },
 ];
 
