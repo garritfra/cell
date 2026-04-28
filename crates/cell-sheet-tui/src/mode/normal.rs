@@ -126,23 +126,42 @@ impl NormalState {
             return Action::Noop;
         }
 
-        // Handle Ctrl combinations first. Counts don't apply to these
-        // (Vim itself supports `[count]Ctrl-d` etc., but that's not in
-        // scope here — discard so the next keypress starts fresh).
+        // Handle Ctrl combinations first. Counts don't apply to most of
+        // these (Vim itself supports `[count]Ctrl-d` etc., but that's not
+        // in scope here — discard so the next keypress starts fresh).
+        // Exception: Ctrl+a / Ctrl+x consume the count as the step size.
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            self.discard_count();
-            return match key.code {
-                KeyCode::Char('d') => Action::HalfPageDown,
-                KeyCode::Char('u') => Action::HalfPageUp,
-                KeyCode::Char('f') => Action::PageDown,
-                KeyCode::Char('b') => Action::PageUp,
-                KeyCode::Char('r') => Action::Redo,
-                KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
-                KeyCode::Char('e') => Action::ScrollLineDown,
-                KeyCode::Char('y') => Action::ScrollLineUp,
-                KeyCode::Char('o') => Action::JumpBack,
-                _ => Action::Noop,
-            };
+            match key.code {
+                KeyCode::Char('a') => {
+                    let delta = self.take_count() as i64;
+                    return Action::AdjustNumber {
+                        pos: app.cursor,
+                        delta,
+                    };
+                }
+                KeyCode::Char('x') => {
+                    let delta = self.take_count() as i64;
+                    return Action::AdjustNumber {
+                        pos: app.cursor,
+                        delta: -delta,
+                    };
+                }
+                _ => {
+                    self.discard_count();
+                    return match key.code {
+                        KeyCode::Char('d') => Action::HalfPageDown,
+                        KeyCode::Char('u') => Action::HalfPageUp,
+                        KeyCode::Char('f') => Action::PageDown,
+                        KeyCode::Char('b') => Action::PageUp,
+                        KeyCode::Char('r') => Action::Redo,
+                        KeyCode::Char('v') => Action::ChangeMode(Mode::VisualBlock),
+                        KeyCode::Char('e') => Action::ScrollLineDown,
+                        KeyCode::Char('y') => Action::ScrollLineUp,
+                        KeyCode::Char('o') => Action::JumpBack,
+                        _ => Action::Noop,
+                    };
+                }
+            }
         }
 
         // Digit handling: build up a count prefix.
@@ -878,6 +897,62 @@ mod tests {
         let app = App::new();
         let mut state = NormalState::new();
         assert_eq!(state.handle_key(ctrl_key('o'), &app), Action::JumpBack);
+    }
+
+    #[test]
+    fn ctrl_a_emits_adjust_number_increment() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(ctrl_key('a'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: 1
+            }
+        );
+    }
+
+    #[test]
+    fn ctrl_x_emits_adjust_number_decrement() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(ctrl_key('x'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: -1
+            }
+        );
+    }
+
+    #[test]
+    fn count_ctrl_a_uses_count_as_delta() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('5')), &app);
+        assert_eq!(
+            state.handle_key(ctrl_key('a'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: 5
+            }
+        );
+        assert!(state.pending_count.is_none(), "count must be consumed");
+    }
+
+    #[test]
+    fn count_ctrl_x_uses_count_as_negative_delta() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        let _ = state.handle_key(key(KeyCode::Char('3')), &app);
+        assert_eq!(
+            state.handle_key(ctrl_key('x'), &app),
+            Action::AdjustNumber {
+                pos: (0, 0),
+                delta: -3
+            }
+        );
+        assert!(state.pending_count.is_none(), "count must be consumed");
     }
 
     #[test]

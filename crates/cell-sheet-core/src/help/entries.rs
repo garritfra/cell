@@ -316,6 +316,24 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         summary: "Repeat last find reversed",
         detail: "Repeat the last f / F find in the opposite direction.",
     },
+    HelpEntry {
+        tags: &["Ctrl+A"],
+        category: HelpCategory::Normal,
+        summary: "Increment number under cursor ([count]Ctrl+A)",
+        detail: "Add 1 (or [count]) to the number stored in the current cell.\n\
+                 Dependent formula cells are re-evaluated automatically.\n\
+                 No-op if the cell contains a formula (shows an error message)\n\
+                 or non-numeric text. Repeatable with '.'.",
+    },
+    HelpEntry {
+        tags: &["Ctrl+X"],
+        category: HelpCategory::Normal,
+        summary: "Decrement number under cursor ([count]Ctrl+X)",
+        detail: "Subtract 1 (or [count]) from the number stored in the current cell.\n\
+                 Dependent formula cells are re-evaluated automatically.\n\
+                 No-op if the cell contains a formula (shows an error message)\n\
+                 or non-numeric text. Repeatable with '.'.",
+    },
 ];
 
 pub static INSERT_ENTRIES: &[HelpEntry] = &[
