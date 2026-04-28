@@ -76,6 +76,7 @@ fn main() -> ExitCode {
 
     let opts = headless::Options {
         file: cli.file.clone().unwrap_or_default(),
+        stdin_data: None,
         reads: cli.read,
         evals: cli.eval,
         writes: cli
