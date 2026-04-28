@@ -104,7 +104,8 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
 
     if !opts.writes.is_empty() {
         // Only reachable when opts.stdin_data is None (stdin + writes already errored above).
-        let (format, delimiter) = file_ctx.expect("writes require file mode");
+        let (format, delimiter) = file_ctx
+            .ok_or_else(|| "internal error: --write reached without a file path".to_string())?;
         for (idx, (ref_str, value)) in opts.writes.iter().enumerate() {
             let pos = parse_single_ref(ref_str).ok_or_else(|| {
                 format!(
@@ -330,6 +331,37 @@ mod tests {
         let mut out = Vec::new();
         let err = run(&opts, &mut out).unwrap_err();
         assert!(err.contains("--write"), "expected --write in error: {err}");
+    }
+
+    #[test]
+    fn run_stdin_empty_produces_empty_sheet() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(vec![]),
+            reads: vec!["A1".to_string()],
+            evals: vec![],
+            writes: vec![],
+            delimiter: None,
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        // Empty stdin yields an empty sheet; A1 is blank → empty string
+        assert_eq!(String::from_utf8(out).unwrap(), "\n");
+    }
+
+    #[test]
+    fn run_stdin_respects_explicit_delimiter() {
+        let opts = Options {
+            file: PathBuf::new(),
+            stdin_data: Some(b"a|b|c\n".to_vec()),
+            reads: vec!["B1".to_string()],
+            evals: vec![],
+            writes: vec![],
+            delimiter: Some(b'|'),
+        };
+        let mut out = Vec::new();
+        run(&opts, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "b\n");
     }
 
     #[test]
