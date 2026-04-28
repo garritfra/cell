@@ -329,7 +329,7 @@ pub static COMMAND_ENTRIES: &[HelpEntry] = &[
         detail: "Sort all rows by the values in a column.\nUsage: :sort <column> [asc|desc]\n\nExamples:\n  :sort A        Sort by column A ascending\n  :sort B desc   Sort by column B descending",
     },
     HelpEntry {
-        tags: &[":set delimiter", "--delimiter"],
+        tags: &[":set delimiter", "--delimiter", "delimiter"],
         category: HelpCategory::Command,
         summary: "Set the field delimiter",
         detail: "Set the delimiter character used when reading or saving\nCSV/TSV files.\n\nUsage (ex-command):  :set delimiter=|\n                     :set delimiter=;\nUsage (CLI flag):    cell data.psv --delimiter '|'\n\nValid delimiters: any single printable ASCII character that\nis not a letter, digit, or double-quote (e.g. | ; , \\t).\n\nThe delimiter is auto-detected from file content on open\nwhen the --delimiter flag is not provided and the extension\nis not .tsv. Use --delimiter to override detection.\n\n:set delimiter only affects the next save — it does not\nre-parse the currently loaded file. To reload with a new\ndelimiter, close and reopen the file with --delimiter.",
