@@ -849,11 +849,11 @@ impl App {
                 self.status_message = Some(msg);
             }
             Action::RepeatLastChange => {
-                if let Some(change) = self.last_change.clone() {
-                    let saved = self.last_change.clone();
+                if let Some(change) = self.last_change.take() {
+                    let saved = change.clone();
                     let rebound = self.rebind_change_to_cursor(change);
                     self.process_action(rebound);
-                    self.last_change = saved;
+                    self.last_change = Some(saved);
                 }
             }
             Action::Open(_) | Action::Resize => {}
