@@ -15,7 +15,7 @@
   are supported. The delimiter is auto-detected from the piped content;
   `--delimiter` overrides it. Using `--write` without a file argument when
   reading from stdin is an error
-  ([#47](https://github.com/garritfra/cell/pull/47))
+  ([#67](https://github.com/garritfra/cell/pull/67))
 - Normal mode `.` repeats the last cell-mutating change at the current cursor
   position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
   edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat
