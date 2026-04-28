@@ -87,10 +87,9 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: artifacts/*
+        run: gh release create ${{ github.ref_name }} artifacts/* --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   publish:
     name: Publish to crates.io
