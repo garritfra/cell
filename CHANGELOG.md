@@ -6,10 +6,12 @@
 
 - `ChangeRange` (`c` in Visual mode) now calls `mark_dirty` on dependents and
   triggers a single topological recalculation after clearing the range.
-  Previously, formulas that referenced cleared cells kept stale values (#8).
+  Previously, formulas that referenced cleared cells kept stale values
+  ([#66](https://github.com/garritfra/cell/pull/66)).
 - `DeleteRow` (`dd` / `Ndd`) now calls `mark_dirty` on dependents and triggers
   a single topological recalculation after clearing the row(s). Previously,
-  formulas that referenced deleted cells kept stale values (#8).
+  formulas that referenced deleted cells kept stale values
+  ([#66](https://github.com/garritfra/cell/pull/66)).
 
 ### Added
 
@@ -18,11 +20,12 @@
   topological-recalc cost once instead of once per cell. All built-in
   multi-cell paths (paste, clear-range, delete-row, undo/redo of ranges) now
   route through this API, making the deferred-recalc invariant explicit and
-  correctly nestable (#8).
+  correctly nestable ([#66](https://github.com/garritfra/cell/pull/66)).
 - Criterion benchmarks in `cell-sheet-core` (`cargo bench -p cell-sheet-core`):
   `edit_cells/unbatched` vs `edit_cells/batched` (demonstrating N× speedup),
   `recalculate/fanout` (single-pass cost at various formula counts), and
-  `mark_dirty/deep_chain` (BFS propagation depth) (#8).
+  `mark_dirty/deep_chain` (BFS propagation depth)
+  ([#66](https://github.com/garritfra/cell/pull/66)).
 
 - Vim-style numeric count prefix in normal mode: type digits before a motion or
   operator to repeat or scale it. `5j` moves five rows down, `10G` jumps to row
