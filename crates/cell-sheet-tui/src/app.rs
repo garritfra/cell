@@ -2698,6 +2698,20 @@ mod tests {
     }
 
     #[test]
+    fn dot_repeats_paste_before() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "hello".into()));
+        app.process_action(Action::YankCell((0, 0)));
+        app.process_action(Action::PasteBefore((0, 1)));
+        app.cursor = (0, 2);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
     fn dot_repeats_clear_range_with_same_shape() {
         let mut app = App::new();
         app.process_action(Action::EditCell((0, 0), "a".into()));

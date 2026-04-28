@@ -198,7 +198,7 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         category: HelpCategory::Normal,
         summary: "Repeat last change",
         detail: "Re-apply the last cell-mutating operation at the current cursor \
-                 position. Works after x, dd, p, P, and any edit committed from \
+                 position. Works after x, dd, d (visual), p, P, and any edit committed from \
                  Insert mode (i/a/c + Esc or Enter). u and Ctrl-r do not affect \
                  the repeat register.",
     },
