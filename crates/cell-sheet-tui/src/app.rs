@@ -216,6 +216,7 @@ impl App {
             }
             Action::ChangeRange { start, end } => {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
+                let mut changes = Vec::new();
                 for row in start.0..=end.0 {
                     for col in start.1..=max_col {
                         let old_raw = self
@@ -224,14 +225,13 @@ impl App {
                             .map(|c| c.raw.clone())
                             .unwrap_or_default();
                         if !old_raw.is_empty() {
-                            self.undo_stack.push(UndoEntry::CellEdit {
-                                pos: (row, col),
-                                old_raw,
-                                new_raw: String::new(),
-                            });
+                            changes.push(((row, col), old_raw, String::new()));
                             self.sheet.clear_cell((row, col));
                         }
                     }
+                }
+                if !changes.is_empty() {
+                    self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
                 }
                 self.dirty = true;
                 self.insert_buffer = String::new();
@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn change_range_single_undo_restores_formula() {
+    fn change_range_undo_preserves_formula() {
         let mut app = App::new();
         app.process_action(Action::EditCell((0, 0), "=1+1".into()));
         app.process_action(Action::ChangeRange {
@@ -1194,6 +1194,10 @@ mod tests {
         assert_eq!(
             app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
             Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("b")
         );
         app.process_action(Action::Redo);
         assert!(app.sheet.get_cell((0, 0)).is_none());
