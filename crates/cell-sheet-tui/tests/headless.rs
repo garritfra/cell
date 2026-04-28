@@ -47,12 +47,7 @@ fn run_with_stdin(args: &[&str], stdin_data: &[u8]) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn cell binary");
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(stdin_data)
-        .unwrap();
+    child.stdin.as_mut().unwrap().write_all(stdin_data).unwrap();
     drop(child.stdin.take());
     child.wait_with_output().expect("failed to wait on cell")
 }
