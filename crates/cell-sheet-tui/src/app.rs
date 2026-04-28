@@ -216,6 +216,7 @@ impl App {
             }
             Action::ChangeRange { start, end } => {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
+                let mut changes = Vec::new();
                 for row in start.0..=end.0 {
                     for col in start.1..=max_col {
                         let old_raw = self
@@ -224,14 +225,13 @@ impl App {
                             .map(|c| c.raw.clone())
                             .unwrap_or_default();
                         if !old_raw.is_empty() {
-                            self.undo_stack.push(UndoEntry::CellEdit {
-                                pos: (row, col),
-                                old_raw,
-                                new_raw: String::new(),
-                            });
+                            changes.push(((row, col), old_raw, String::new()));
                             self.sheet.clear_cell((row, col));
                         }
                     }
+                }
+                if !changes.is_empty() {
+                    self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
                 }
                 self.dirty = true;
                 self.insert_buffer = String::new();
@@ -1131,6 +1131,99 @@ mod tests {
         );
     }
 
+    // ── ChangeRange (visual-mode c) ────────────────────────────────────────────
+
+    #[test]
+    fn change_range_single_undo_restores_all_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::EditCell((1, 0), "c".into()));
+        app.process_action(Action::EditCell((1, 1), "d".into()));
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (1, 1),
+        });
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).map(|c| c.raw.as_str()),
+            Some("c")
+        );
+        assert_eq!(
+            app.sheet.get_cell((1, 1)).map(|c| c.raw.as_str()),
+            Some("d")
+        );
+    }
+
+    #[test]
+    fn change_range_undo_preserves_formula() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "=1+1".into()));
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (0, 0),
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("=1+1")
+        );
+        let val = app.sheet.get_cell((0, 0)).map(|c| c.value.to_string());
+        assert_eq!(val.as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn change_range_can_be_redone() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (0, 1),
+        });
+        app.process_action(Action::Undo);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).map(|c| c.raw.as_str()),
+            Some("b")
+        );
+        app.process_action(Action::Redo);
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn change_range_of_empty_cells_no_undo_entry() {
+        let mut app = App::new();
+        // Set up one prior edit so the undo stack has exactly one entry.
+        app.process_action(Action::EditCell((5, 5), "prior".into()));
+        app.sheet.col_count = 2;
+        app.sheet.row_count = 2;
+        // ChangeRange on a range with no non-empty cells: should push nothing.
+        app.process_action(Action::ChangeRange {
+            start: (0, 0),
+            end: (1, 1),
+        });
+        // The only undo step is the prior EditCell — not the ChangeRange.
+        app.process_action(Action::Undo);
+        assert!(
+            app.sheet.get_cell((5, 5)).is_none(),
+            "undo should have reverted the prior edit, not a no-op ChangeRange"
+        );
+    }
+
     // ── Paste / PasteBefore ─────────────────────────────────────────────────
 
     fn raw_at(app: &App, pos: CellPos) -> Option<String> {
@@ -1314,6 +1407,42 @@ mod tests {
             end: (1, 1),
         });
         assert!(!app.dirty);
+    }
+
+    #[test]
+    fn paste_block_of_n_cells_is_single_undo_step() {
+        let mut app = App::new();
+        // Fill a 3×3 source block.
+        for row in 0..3_usize {
+            for col in 0..3_usize {
+                let val = format!("r{}c{}", row, col);
+                app.process_action(Action::EditCell((row, col), val));
+            }
+        }
+        app.process_action(Action::YankRange {
+            start: (0, 0),
+            end: (2, 2),
+        });
+        // Paste at (3, 0): fills rows 3–5, cols 0–2 (9 cells).
+        app.process_action(Action::Paste((3, 0)));
+        for row in 3..6_usize {
+            for col in 0..3_usize {
+                assert!(
+                    app.sheet.get_cell((row, col)).is_some(),
+                    "expected cell ({row},{col}) to be filled after paste"
+                );
+            }
+        }
+        // A single undo should clear all 9 pasted cells.
+        app.process_action(Action::Undo);
+        for row in 3..6_usize {
+            for col in 0..3_usize {
+                assert!(
+                    app.sheet.get_cell((row, col)).is_none(),
+                    "expected cell ({row},{col}) to be empty after single undo"
+                );
+            }
+        }
     }
 
     // ── Help ────────────────────────────────────────────────────────────────

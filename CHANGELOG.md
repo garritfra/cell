@@ -27,6 +27,12 @@
   delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
   Resolves #20.
 
+### Fixed
+
+- Visual `c` (`ChangeRange`) now records a single undo step for the entire
+  range, consistent with `dd`, visual `d`, and paste
+  ([#60](https://github.com/garritfra/cell/pull/60)).
+
 ## 0.3.1 (2026-04-28)
 
 ### Fixed
