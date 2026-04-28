@@ -48,6 +48,14 @@ pub struct App {
     pub jump_list: Vec<CellPos>,
     pub jump_idx: usize,
     pub last_visual: Option<LastVisual>,
+    /// Previously executed colon commands, oldest first.
+    pub command_history: Vec<String>,
+    /// Index into `command_history` while the user is cycling with ↑/↓.
+    /// `None` means the user is not currently browsing history.
+    pub command_history_idx: Option<usize>,
+    /// The in-progress command line saved when the user first presses ↑,
+    /// restored when they press ↓ past the most recent entry.
+    pub command_history_scratch: String,
 }
 
 const JUMP_LIST_CAP: usize = 100;
@@ -88,6 +96,9 @@ impl App {
             jump_list: Vec::new(),
             jump_idx: 0,
             last_visual: None,
+            command_history: Vec::new(),
+            command_history_idx: None,
+            command_history_scratch: String::new(),
         }
     }
 
@@ -169,6 +180,8 @@ impl App {
                 if mode == Mode::Command {
                     self.command_kind = CommandKind::Colon;
                     self.command_line.clear();
+                    self.command_history_idx = None;
+                    self.command_history_scratch.clear();
                 }
                 self.mode = mode;
             }
@@ -375,6 +388,8 @@ impl App {
                     SearchDirection::Backward => CommandKind::Question,
                 };
                 self.search_origin = Some(self.cursor);
+                self.command_history_idx = None;
+                self.command_history_scratch.clear();
                 self.mode = Mode::Command;
             }
             Action::SearchIncremental { pattern, direction } => {

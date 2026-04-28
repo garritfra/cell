@@ -347,6 +347,17 @@ fn run_loop(
                                 let kind = app.command_kind;
                                 let is_wq =
                                     matches!(kind, CommandKind::Colon) && cmd.trim() == "wq";
+                                // Push non-empty colon commands to history,
+                                // avoiding consecutive duplicates.
+                                if matches!(kind, CommandKind::Colon) && !cmd.trim().is_empty() {
+                                    if app.command_history.last().map(|s| s.as_str())
+                                        != Some(cmd.trim())
+                                    {
+                                        app.command_history.push(cmd.trim().to_string());
+                                    }
+                                }
+                                app.command_history_idx = None;
+                                app.command_history_scratch.clear();
                                 let parsed = submit(kind, &cmd);
                                 app.command_line.clear();
                                 if is_wq {
@@ -359,11 +370,51 @@ fn run_loop(
                                 parsed
                             }
                             CommandAction::Cancel => {
+                                app.command_history_idx = None;
+                                app.command_history_scratch.clear();
                                 if search_dir.is_some() {
                                     Action::CancelSearch
                                 } else {
                                     app.command_line.clear();
                                     Action::ChangeMode(Mode::Normal)
+                                }
+                            }
+                            CommandAction::HistoryPrev => {
+                                if app.command_history.is_empty() {
+                                    Action::Noop
+                                } else {
+                                    let new_idx = match app.command_history_idx {
+                                        None => {
+                                            // Save current in-progress text before browsing.
+                                            app.command_history_scratch =
+                                                app.command_line.clone();
+                                            app.command_history.len() - 1
+                                        }
+                                        Some(i) => i.saturating_sub(1),
+                                    };
+                                    app.command_history_idx = Some(new_idx);
+                                    app.command_line =
+                                        app.command_history[new_idx].clone();
+                                    Action::Noop
+                                }
+                            }
+                            CommandAction::HistoryNext => {
+                                match app.command_history_idx {
+                                    None => Action::Noop,
+                                    Some(i) => {
+                                        if i + 1 < app.command_history.len() {
+                                            let new_idx = i + 1;
+                                            app.command_history_idx = Some(new_idx);
+                                            app.command_line =
+                                                app.command_history[new_idx].clone();
+                                        } else {
+                                            // Past the newest entry — restore scratch.
+                                            app.command_history_idx = None;
+                                            app.command_line =
+                                                app.command_history_scratch.clone();
+                                        }
+                                        Action::Noop
+                                    }
                                 }
                             }
                             CommandAction::Noop => Action::Noop,
