@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Custom field delimiter support: `--delimiter '|'` CLI flag, auto-detection from
+  file content, and `:set delimiter=X` ex-command. Writing with a non-standard
+  delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
+  Resolves #20.
+
 ## 0.3.1 (2026-04-28)
 
 ### Fixed

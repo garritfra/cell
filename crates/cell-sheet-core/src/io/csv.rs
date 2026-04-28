@@ -4,6 +4,30 @@ use std::io::{Read, Write};
 const MAX_COL_WIDTH: u16 = 40;
 const DEFAULT_COL_WIDTH: u16 = 10;
 
+/// Inspect the first line of `sample` (up to 4 KiB) and return the most
+/// frequent delimiter among `,`, `\t`, `|`, `;`. Ties are broken in that
+/// order (comma wins ties). Returns `b','` for empty input.
+pub fn sniff_delimiter(sample: &[u8]) -> u8 {
+    let line_end = sample
+        .iter()
+        .position(|&b| b == b'\n')
+        .unwrap_or(sample.len());
+    let line = &sample[..line_end.min(4096)];
+
+    // Iterate in preference order so the first candidate wins ties.
+    let candidates = [b',', b'\t', b'|', b';'];
+    let mut best_delim = b',';
+    let mut best_count = 0usize;
+    for &d in &candidates {
+        let count = line.iter().filter(|&&b| b == d).count();
+        if count > best_count {
+            best_count = count;
+            best_delim = d;
+        }
+    }
+    best_delim
+}
+
 pub fn read_csv<R: Read>(reader: R, delimiter: u8) -> Result<Sheet, Box<dyn std::error::Error>> {
     let mut sheet = Sheet::new();
     let mut csv_reader = csv::ReaderBuilder::new()
@@ -189,5 +213,98 @@ mod tests {
         let sheet = read_csv(data.as_bytes(), b',').unwrap();
         assert!(sheet.col_widths[0] >= 5);
         assert!(sheet.col_widths[1] >= 5);
+    }
+
+    #[test]
+    fn sniff_pipe_delimiter() {
+        let sample = b"name|score|grade\nalice|95|A\n";
+        assert_eq!(sniff_delimiter(sample), b'|');
+    }
+
+    #[test]
+    fn sniff_semicolon_delimiter() {
+        let sample = b"a;b;c\n1;2;3\n";
+        assert_eq!(sniff_delimiter(sample), b';');
+    }
+
+    #[test]
+    fn sniff_tab_delimiter() {
+        let sample = b"a\tb\tc\n1\t2\t3\n";
+        assert_eq!(sniff_delimiter(sample), b'\t');
+    }
+
+    #[test]
+    fn sniff_empty_defaults_to_comma() {
+        assert_eq!(sniff_delimiter(b""), b',');
+    }
+
+    #[test]
+    fn sniff_tie_prefers_comma() {
+        // one comma, one pipe — comma wins ties
+        assert_eq!(sniff_delimiter(b"a,b|c\n"), b',');
+    }
+
+    #[test]
+    fn sniff_only_reads_first_line() {
+        // First line has pipes; second line has many commas — sniff ignores line 2
+        let sample = b"a|b|c\n1,2,3,4,5,6,7,8,9\n";
+        assert_eq!(sniff_delimiter(sample), b'|');
+    }
+
+    #[test]
+    fn read_pipe_delimited() {
+        let data = "a|b|c\n1|2|3\n";
+        let sheet = read_csv(data.as_bytes(), b'|').unwrap();
+        assert_eq!(sheet.row_count, 2);
+        assert_eq!(sheet.col_count, 3);
+        assert_eq!(
+            sheet.get_cell((0, 1)).unwrap().value,
+            CellValue::Text("b".into())
+        );
+        assert_eq!(
+            sheet.get_cell((1, 2)).unwrap().value,
+            CellValue::Number(3.0)
+        );
+    }
+
+    #[test]
+    fn write_pipe_delimited() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "a");
+        sheet.set_cell((0, 1), "b");
+        let mut buf = Vec::new();
+        write_csv(&sheet, &mut buf, b'|').unwrap();
+        assert_eq!(String::from_utf8(buf).unwrap(), "a|b\n");
+    }
+
+    #[test]
+    fn sniff_respects_4kib_cap_on_long_first_line() {
+        // First line is 4097 bytes: 4096 pipes followed by one comma.
+        // Only the first 4096 bytes are inspected, so pipe wins.
+        let mut line = vec![b'|'; 4096];
+        line.push(b',');
+        line.push(b'\n');
+        assert_eq!(sniff_delimiter(&line), b'|');
+    }
+
+    #[test]
+    fn sniff_crlf_line_ending() {
+        // Windows-style CRLF — \r is not a candidate, so it's harmless;
+        // sniff should still correctly detect the pipe on the first line.
+        let sample = b"a|b|c\r\n1,2,3\n";
+        assert_eq!(sniff_delimiter(sample), b'|');
+    }
+
+    #[test]
+    fn sniff_then_read_round_trip() {
+        let data = b"x|y|z\n1|2|3\n";
+        let delim = sniff_delimiter(data);
+        assert_eq!(delim, b'|');
+        let sheet = read_csv(data.as_ref(), delim).unwrap();
+        assert_eq!(sheet.col_count, 3);
+        assert_eq!(
+            sheet.get_cell((1, 1)).unwrap().value,
+            CellValue::Number(2.0)
+        );
     }
 }

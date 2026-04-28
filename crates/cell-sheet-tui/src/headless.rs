@@ -44,6 +44,7 @@ pub struct Options {
     pub reads: Vec<String>,
     pub evals: Vec<String>,
     pub writes: Vec<(String, String)>,
+    pub delimiter: Option<u8>,
 }
 
 impl Options {
@@ -52,12 +53,36 @@ impl Options {
     }
 }
 
+fn resolve_delimiter(
+    path: &Path,
+    format: Format,
+    explicit: Option<u8>,
+) -> Result<u8, Box<dyn std::error::Error>> {
+    if let Some(d) = explicit {
+        return Ok(d);
+    }
+    match format {
+        Format::Tsv => Ok(b'\t'),
+        Format::Cell => Ok(b','), // unused — .cell files don't use a delimiter
+        Format::Csv => {
+            use std::io::Read as _;
+            let mut buf = vec![0u8; 4096];
+            let mut file = std::fs::File::open(path)?;
+            let n = file.read(&mut buf)?;
+            Ok(csv_io::sniff_delimiter(&buf[..n]))
+        }
+    }
+}
+
 /// Run the requested headless operations and write their textual results to
 /// `out`. Errors are returned with a human-readable message; callers are
 /// responsible for emitting them to stderr and choosing an exit code.
 pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
     let format = Format::from_path(&opts.file);
-    let (mut sheet, mut deps) = load(&opts.file, format)
+    let delimiter = resolve_delimiter(&opts.file, format, opts.delimiter)
+        .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
+
+    let (mut sheet, mut deps) = load(&opts.file, format, delimiter)
         .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
 
     if !opts.writes.is_empty() {
@@ -71,7 +96,7 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
             apply_write(&mut sheet, &mut deps, pos, value);
         }
         recalculate(&mut sheet, &deps);
-        save(&opts.file, format, &sheet)
+        save(&opts.file, format, &sheet, delimiter)
             .map_err(|e| format!("failed to write {}: {e}", opts.file.display()))?;
     }
 
@@ -92,12 +117,20 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
     Ok(())
 }
 
-fn load(path: &Path, format: Format) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(path)?;
+fn load(
+    path: &Path,
+    format: Format,
+    delimiter: u8,
+) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
     let mut sheet = match format {
-        Format::Csv => csv_io::read_csv(file, b',')?,
-        Format::Tsv => csv_io::read_csv(file, b'\t')?,
-        Format::Cell => cell_format::read_cell_format(file)?,
+        Format::Csv | Format::Tsv => {
+            let file = std::fs::File::open(path)?;
+            csv_io::read_csv(file, delimiter)?
+        }
+        Format::Cell => {
+            let file = std::fs::File::open(path)?;
+            cell_format::read_cell_format(file)?
+        }
     };
     let mut deps = DepGraph::new();
 
@@ -115,11 +148,15 @@ fn load(path: &Path, format: Format) -> Result<(Sheet, DepGraph), Box<dyn std::e
     Ok((sheet, deps))
 }
 
-fn save(path: &Path, format: Format, sheet: &Sheet) -> Result<(), Box<dyn std::error::Error>> {
+fn save(
+    path: &Path,
+    format: Format,
+    sheet: &Sheet,
+    delimiter: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
     let file = std::fs::File::create(path)?;
     match format {
-        Format::Csv => csv_io::write_csv(sheet, file, b',')?,
-        Format::Tsv => csv_io::write_csv(sheet, file, b'\t')?,
+        Format::Csv | Format::Tsv => csv_io::write_csv(sheet, file, delimiter)?,
         Format::Cell => cell_format::write_cell_format(sheet, file)?,
     }
     Ok(())
