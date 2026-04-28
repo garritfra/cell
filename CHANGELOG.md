@@ -18,6 +18,11 @@
   file content, and `:set delimiter=X` ex-command. Writing with a non-standard
   delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
   Resolves #20.
+- Criterion benchmark suite in `cell-sheet-core` (`cargo bench -p cell-sheet-core`):
+  `csv_load_100k`, `formula_recalc_10k`, `mark_dirty_chain`,
+  `recalculate_wide_dag`, `range_sum_10k`. CI compiles the suite on every
+  push to prevent API-breakage regressions. See `BENCH.md` for how to run
+  and record results. Closes #7.
 
 ## 0.3.1 (2026-04-28)
 
