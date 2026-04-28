@@ -4,6 +4,10 @@
 
 ### Added
 
+- Normal mode `.` repeats the last cell-mutating change at the current cursor
+  position, vim-style. Works after `x`, `dd`, `d` (visual), `p`/`P`, and any
+  edit committed from Insert mode. `u` and `Ctrl-r` do not overwrite the repeat
+  register ([#63](https://github.com/garritfra/cell/pull/63))
 - Command-mode history: in the `:` prompt, `↑` / `↓` cycle through
   previously executed commands (oldest to newest). The in-progress input is
   saved and restored when stepping past the newest entry. History is
