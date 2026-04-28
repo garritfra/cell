@@ -9,6 +9,14 @@
   saved and restored when stepping past the newest entry. History is
   session-only and consecutive duplicates are skipped
   ([#62](https://github.com/garritfra/cell/pull/62))
+- Operator-pending motion counts: a count typed *between* the operator and the
+  motion now works as in vim — `d3j` clears the current row and 3 rows below,
+  `d2k` clears 2 rows above plus the current row, `y3l` yanks the current cell
+  and 3 cells to the right, `y2k` yanks 2 rows upward. Outer and inner counts
+  multiply: `5d2j` clears 10 rows downward. All directional motions (`h j k l`)
+  are supported after `d` and `y`. Count prefixes in Visual mode also work: `5j`
+  in visual extends the selection 5 rows, `3l` extends it 3 cells right
+  ([#59](https://github.com/garritfra/cell/pull/59))
 - Vim-style numeric count prefix in normal mode: type digits before a motion or
   operator to repeat or scale it. `5j` moves five rows down, `10G` jumps to row
   10, `5gg` jumps to row 5 from the top, `3dd` deletes three rows (line-wise,
@@ -23,6 +31,12 @@
   file content, and `:set delimiter=X` ex-command. Writing with a non-standard
   delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
   Resolves #20.
+
+### Fixed
+
+- Visual `c` (`ChangeRange`) now records a single undo step for the entire
+  range, consistent with `dd`, visual `d`, and paste
+  ([#60](https://github.com/garritfra/cell/pull/60)).
 
 ## 0.3.1 (2026-04-28)
 
