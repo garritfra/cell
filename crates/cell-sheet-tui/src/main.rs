@@ -298,6 +298,7 @@ fn run_loop(
                                     | Action::ClearRange { .. }
                                     | Action::YankRange { .. }
                                     | Action::ChangeRange { .. }
+                                    | Action::CaseOpRange { .. }
                             );
                             if exits {
                                 let anchor = vs.anchor;

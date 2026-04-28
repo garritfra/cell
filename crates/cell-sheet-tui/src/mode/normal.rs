@@ -1,4 +1,4 @@
-use crate::action::{Action, Direction, Mode, SearchDirection};
+use crate::action::{Action, CaseOp, Direction, Mode, SearchDirection};
 use crate::app::App;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -183,6 +183,42 @@ impl NormalState {
                 ('g', KeyCode::Char('v')) => {
                     self.discard_count();
                     Action::ReselectLastVisual
+                }
+                ('g', KeyCode::Char('u')) => {
+                    self.discard_count();
+                    self.pending = Some('u');
+                    Action::Noop
+                }
+                ('g', KeyCode::Char('U')) => {
+                    self.discard_count();
+                    self.pending = Some('U');
+                    Action::Noop
+                }
+                ('g', KeyCode::Char('~')) => {
+                    self.discard_count();
+                    self.pending = Some('~');
+                    Action::Noop
+                }
+                ('u', KeyCode::Char('u')) => {
+                    self.discard_count();
+                    Action::CaseOpCell {
+                        pos: app.cursor,
+                        op: CaseOp::ToLower,
+                    }
+                }
+                ('U', KeyCode::Char('U')) => {
+                    self.discard_count();
+                    Action::CaseOpCell {
+                        pos: app.cursor,
+                        op: CaseOp::ToUpper,
+                    }
+                }
+                ('~', KeyCode::Char('~')) => {
+                    self.discard_count();
+                    Action::CaseOpCell {
+                        pos: app.cursor,
+                        op: CaseOp::ToggleAll,
+                    }
                 }
                 ('d', KeyCode::Char('d')) => {
                     let count = self.pending_count.take().unwrap_or(1).max(1);
@@ -459,6 +495,13 @@ impl NormalState {
             KeyCode::Char('.') => {
                 self.discard_count();
                 Action::RepeatLastChange
+            }
+            KeyCode::Char('~') => {
+                self.discard_count();
+                Action::CaseOpCell {
+                    pos: app.cursor,
+                    op: CaseOp::ToggleFirst,
+                }
             }
             _ => {
                 // Unknown key: throw away any pending count so we don't
@@ -1082,8 +1125,9 @@ mod tests {
         let app = App::new();
         let mut state = NormalState::new();
         let _ = state.handle_key(key(KeyCode::Char('5')), &app);
-        // Some key that isn't bound: '~' is not handled in normal mode.
-        let _ = state.handle_key(key(KeyCode::Char('~')), &app);
+        // An unbound key (Tab is here used in the outer digit path where it is unrecognised as a digit).
+        // Use BackTab which is not bound in normal mode.
+        let _ = state.handle_key(key(KeyCode::BackTab), &app);
         assert!(state.pending_count.is_none());
         // Next motion should NOT carry the orphaned 5.
         assert_eq!(
@@ -1289,5 +1333,110 @@ mod tests {
                 end: (15, usize::MAX),
             }
         );
+    }
+
+    // --- case-op key-binding tests ----------------------------------------
+
+    #[test]
+    fn tilde_emits_toggle_first() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('~')), &app),
+            Action::CaseOpCell {
+                pos: (0, 0),
+                op: CaseOp::ToggleFirst,
+            }
+        );
+    }
+
+    #[test]
+    fn guu_emits_to_lower() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('g')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('u')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('u')), &app),
+            Action::CaseOpCell {
+                pos: (0, 0),
+                op: CaseOp::ToLower,
+            }
+        );
+    }
+
+    #[test]
+    fn guu_emits_to_lower_cursor_set() {
+        let mut app = App::new();
+        app.cursor = (2, 3);
+        let mut state = NormalState::new();
+        feed(&mut state, &app, "gu");
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('u')), &app),
+            Action::CaseOpCell {
+                pos: (2, 3),
+                op: CaseOp::ToLower,
+            }
+        );
+    }
+
+    #[test]
+    fn g_upper_u_u_emits_to_upper() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('g')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('U')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('U')), &app),
+            Action::CaseOpCell {
+                pos: (0, 0),
+                op: CaseOp::ToUpper,
+            }
+        );
+    }
+
+    #[test]
+    fn g_tilde_tilde_emits_toggle_all() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('g')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('~')), &app),
+            Action::Noop
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('~')), &app),
+            Action::CaseOpCell {
+                pos: (0, 0),
+                op: CaseOp::ToggleAll,
+            }
+        );
+    }
+
+    #[test]
+    fn gu_followed_by_non_u_is_noop() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        feed(&mut state, &app, "gu");
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('x')), &app),
+            Action::Noop
+        );
+        assert!(state.pending.is_none());
     }
 }
