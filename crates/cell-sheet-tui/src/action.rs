@@ -155,6 +155,8 @@ pub enum Action {
         backward: bool,
     },
     ReselectLastVisual,
+    SetDelimiter(u8),
+    SetStatus(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

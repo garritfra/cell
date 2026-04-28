@@ -1,1 +1,3 @@
 /target
+# Test artifact created by unit tests that write to relative paths
+crates/cell-sheet-tui/data.csv

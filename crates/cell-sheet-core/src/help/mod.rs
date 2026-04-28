@@ -167,5 +167,9 @@ mod tests {
         assert!(registry.find("IF").is_some(), "missing IF");
         assert!(registry.find("Esc").is_some(), "missing Esc");
         assert!(registry.find("v").is_some(), "missing v");
+        assert!(
+            registry.find(":set delimiter").is_some(),
+            "missing :set delimiter"
+        );
     }
 }

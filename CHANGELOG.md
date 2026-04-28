@@ -14,6 +14,10 @@
   (vim's `showcmd`). `Esc` cancels a half-typed count, and counts saturate at
   one million to keep huge accidental inputs responsive
   ([#55](https://github.com/garritfra/cell/pull/55))
+- Custom field delimiter support: `--delimiter '|'` CLI flag, auto-detection from
+  file content, and `:set delimiter=X` ex-command. Writing with a non-standard
+  delimiter to a `.csv` or `.tsv` file shows a warning; use `:w!` to override.
+  Resolves #20.
 
 ## 0.3.1 (2026-04-28)
 

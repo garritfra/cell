@@ -26,7 +26,33 @@ fn parse_search(input: &str, direction: SearchDirection) -> Action {
 }
 
 pub fn parse_command(input: &str) -> Action {
-    let input = input.trim();
+    let input = input.trim_start();
+
+    // Handle before trimming the end: the delimiter character may itself be
+    // whitespace (e.g. Tab), so trim_end() must not run before this check.
+    if let Some(stripped) = input.strip_prefix("set delimiter=") {
+        let mut chars = stripped.chars();
+        return match (chars.next(), chars.next()) {
+            // Tab (0x09) is the standard TSV delimiter and is explicitly
+            // allowed even though it is a control character (< 0x20).
+            (Some(c), None)
+                if c.is_ascii()
+                    && !c.is_alphanumeric()
+                    && c != '"'
+                    && c != ' '
+                    && ((c as u8) >= 0x20 || c == '\t') =>
+            {
+                Action::SetDelimiter(c as u8)
+            }
+            _ => Action::SetStatus(
+                "Invalid delimiter: must be a single non-alphanumeric ASCII character (not \", \\n, \\r).".into()
+            ),
+        };
+    }
+
+    // For all other commands, trailing whitespace is ignored (Vim behaviour).
+    let input = input.trim_end();
+
     if input == "q" {
         Action::Quit { force: false }
     } else if input == "q!" {
@@ -176,6 +202,91 @@ mod tests {
             parse_command("help :w"),
             Action::ShowHelp(Some(":w".into()))
         );
+    }
+
+    #[test]
+    fn parse_set_delimiter_pipe() {
+        assert_eq!(parse_command("set delimiter=|"), Action::SetDelimiter(b'|'));
+    }
+
+    #[test]
+    fn parse_set_delimiter_semicolon() {
+        assert_eq!(parse_command("set delimiter=;"), Action::SetDelimiter(b';'));
+    }
+
+    #[test]
+    fn parse_set_delimiter_tab() {
+        assert_eq!(
+            parse_command("set delimiter=\t"),
+            Action::SetDelimiter(b'\t')
+        );
+    }
+
+    #[test]
+    fn parse_set_delimiter_empty_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter="),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_alphanumeric_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=a"),
+            Action::SetStatus(_)
+        ));
+        assert!(matches!(
+            parse_command("set delimiter=1"),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_multi_char_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=||"),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_non_ascii_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=€"),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_quit_with_trailing_space() {
+        // Trailing whitespace must be tolerated (Vim behaviour)
+        assert_eq!(parse_command("q "), Action::Quit { force: false });
+        assert_eq!(parse_command("wq "), Action::Save(None));
+    }
+
+    #[test]
+    fn parse_set_delimiter_quote_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=\""),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_space_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter= "),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_delimiter_nul_is_error() {
+        assert!(matches!(
+            parse_command("set delimiter=\0"),
+            Action::SetStatus(_)
+        ));
     }
 
     fn key(code: KeyCode) -> KeyEvent {

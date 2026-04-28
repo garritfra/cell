@@ -40,6 +40,7 @@ pub struct App {
     pub dirty: bool,
     pub should_quit: bool,
     pub insert_buffer: String,
+    pub delimiter: u8,
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
@@ -79,6 +80,7 @@ impl App {
             dirty: false,
             should_quit: false,
             insert_buffer: String::new(),
+            delimiter: b',',
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),
@@ -307,12 +309,26 @@ impl App {
                         );
                         return;
                     }
+                    let expected_delim = match format {
+                        FileFormat::Csv => b',',
+                        FileFormat::Tsv => b'\t',
+                        FileFormat::Cell => 0,
+                    };
+                    if !matches!(format, FileFormat::Cell) && self.delimiter != expected_delim {
+                        self.status_message = Some(format!(
+                            "Non-standard delimiter '{}' will be used. Use :w! to force, or save as .tsv / .psv.",
+                            self.delimiter as char
+                        ));
+                        return;
+                    }
                     self.do_save(&path, format);
                 } else {
                     self.status_message = Some("No file name".into());
                 }
             }
             Action::ForceSave(path_opt) => {
+                // ForceSave intentionally bypasses both the formula-flatten warning and the
+                // non-standard-delimiter warning. The user has explicitly opted in via :w!
                 let path = path_opt.or(self.file_path.clone());
                 if let Some(path) = path {
                     let format = Self::format_from_path(&path);
@@ -807,6 +823,13 @@ impl App {
                     self.status_message = Some("No string under cursor".into());
                 }
             }
+            Action::SetDelimiter(d) => {
+                self.delimiter = d;
+                self.status_message = Some(format!("Delimiter set to '{}'", d as char));
+            }
+            Action::SetStatus(msg) => {
+                self.status_message = Some(msg);
+            }
             Action::Open(_) | Action::Resize => {}
         }
     }
@@ -826,13 +849,11 @@ impl App {
     }
 
     fn do_save(&mut self, path: &PathBuf, format: FileFormat) {
+        let delimiter = self.delimiter;
         let result = match format {
-            FileFormat::Csv => std::fs::File::create(path)
+            FileFormat::Csv | FileFormat::Tsv => std::fs::File::create(path)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                .and_then(|f| cell_sheet_core::io::csv::write_csv(&self.sheet, f, b',')),
-            FileFormat::Tsv => std::fs::File::create(path)
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                .and_then(|f| cell_sheet_core::io::csv::write_csv(&self.sheet, f, b'\t')),
+                .and_then(|f| cell_sheet_core::io::csv::write_csv(&self.sheet, f, delimiter)),
             FileFormat::Cell => std::fs::File::create(path)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
                 .and_then(|f| cell_sheet_core::io::cell_format::write_cell_format(&self.sheet, f)),
@@ -2135,6 +2156,22 @@ mod tests {
     }
 
     #[test]
+    fn set_delimiter_updates_field_and_status() {
+        let mut app = App::new();
+        assert_eq!(app.delimiter, b',', "default delimiter should be comma");
+        app.process_action(Action::SetDelimiter(b'|'));
+        assert_eq!(app.delimiter, b'|');
+        assert_eq!(app.status_message.as_deref(), Some("Delimiter set to '|'"));
+    }
+
+    #[test]
+    fn set_delimiter_tab() {
+        let mut app = App::new();
+        app.process_action(Action::SetDelimiter(b'\t'));
+        assert_eq!(app.delimiter, b'\t');
+    }
+
+    #[test]
     fn dd_undo_preserves_formula() {
         let mut app = App::new();
         app.process_action(Action::EditCell((0, 0), "10".into()));
@@ -2324,5 +2361,66 @@ mod tests {
 
         app.process_action(Action::PrevNonEmpty(2));
         assert_eq!(app.cursor, (0, 1));
+    }
+
+    // ── Delimiter save warnings ──────────────────────────────────────────────
+
+    #[test]
+    fn save_csv_with_non_comma_delimiter_warns() {
+        let mut app = App::new();
+        // Use a non-existent path so the actual write would fail, but the delimiter
+        // warning must fire *before* the write attempt.
+        app.file_path = Some(std::path::PathBuf::from("data.csv"));
+        app.delimiter = b'|';
+        app.process_action(Action::Save(None));
+        let msg = app.status_message.as_deref().unwrap_or("");
+        assert!(
+            msg.contains("Non-standard delimiter"),
+            "expected delimiter warning, got: {msg:?}"
+        );
+    }
+
+    #[test]
+    fn save_tsv_with_non_tab_delimiter_warns() {
+        let mut app = App::new();
+        app.file_path = Some(std::path::PathBuf::from("data.tsv"));
+        app.delimiter = b'|';
+        app.process_action(Action::Save(None));
+        let msg = app.status_message.as_deref().unwrap_or("");
+        assert!(
+            msg.contains("Non-standard delimiter"),
+            "expected delimiter warning, got: {msg:?}"
+        );
+    }
+
+    #[test]
+    fn save_csv_with_comma_delimiter_no_delimiter_warning() {
+        let mut app = App::new();
+        // delimiter is b',' (default) — no delimiter warning should fire.
+        // The write may fail for other reasons (path doesn't exist), but the
+        // error message should NOT contain "Non-standard delimiter".
+        app.file_path = Some(std::path::PathBuf::from("data.csv"));
+        app.delimiter = b',';
+        app.process_action(Action::Save(None));
+        let msg = app.status_message.as_deref().unwrap_or("");
+        assert!(
+            !msg.contains("Non-standard delimiter"),
+            "unexpected delimiter warning: {msg:?}"
+        );
+    }
+
+    #[test]
+    fn force_save_csv_with_non_comma_delimiter_skips_warning() {
+        let mut app = App::new();
+        app.file_path = Some(std::path::PathBuf::from("data.csv"));
+        app.delimiter = b'|';
+        // ForceSave must NOT produce the delimiter warning.
+        // (The write may produce an I/O error if the path can't be written, which is fine.)
+        app.process_action(Action::ForceSave(None));
+        let msg = app.status_message.as_deref().unwrap_or("");
+        assert!(
+            !msg.contains("Non-standard delimiter"),
+            "ForceSave should bypass delimiter warning, got: {msg:?}"
+        );
     }
 }
