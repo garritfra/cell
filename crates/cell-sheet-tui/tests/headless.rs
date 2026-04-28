@@ -218,3 +218,65 @@ fn missing_file_exits_nonzero() {
     assert!(!out.status.success());
     assert!(!stderr(&out).is_empty());
 }
+
+#[test]
+fn read_pipe_delimited_with_delimiter_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_csv(&dir, "data.psv", "a|b|c\n1|2|3\n");
+
+    let out = run(&[path.to_str().unwrap(), "--delimiter", "|", "--read", "B2"]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "2\n");
+}
+
+#[test]
+fn read_pipe_delimited_auto_sniff_csv_extension() {
+    // .csv extension but pipe-separated content — sniff should detect the pipe
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_csv(&dir, "data.csv", "a|b|c\n1|2|3\n");
+
+    let out = run(&[path.to_str().unwrap(), "--read", "B2"]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "2\n");
+}
+
+#[test]
+fn read_semicolon_delimited_with_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_csv(&dir, "data.csv", "a;b;c\n10;20;30\n");
+
+    let out = run(&[path.to_str().unwrap(), "--delimiter", ";", "--read", "C2"]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "30\n");
+}
+
+#[test]
+fn write_pipe_delimited_with_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_csv(&dir, "data.psv", "a|b\n1|2\n");
+
+    // Write a new value and check the file stays pipe-delimited
+    let out = run(&[
+        path.to_str().unwrap(),
+        "--delimiter",
+        "|",
+        "--write",
+        "A1",
+        "99",
+    ]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert!(after.starts_with("99|b\n"), "got: {after:?}");
+}
+
+#[test]
+fn invalid_delimiter_exits_with_code_2() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_csv(&dir, "data.csv", "a,b\n");
+
+    // Alphanumeric delimiter is not valid
+    let out = run(&[path.to_str().unwrap(), "--delimiter", "a", "--read", "A1"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(!stderr(&out).is_empty());
+}

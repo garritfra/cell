@@ -40,10 +40,36 @@ struct Cli {
     /// Repeat to batch multiple writes into a single save.
     #[arg(long, value_names = ["REF", "VALUE"], num_args = 2)]
     write: Vec<String>,
+
+    /// Field delimiter character (e.g. '|', ';'). Auto-detected from file
+    /// content when omitted; .tsv files always default to tab.
+    #[arg(long, value_name = "CHAR")]
+    delimiter: Option<char>,
+}
+
+fn parse_delimiter(c: char) -> Result<u8, String> {
+    if !c.is_ascii() {
+        return Err(format!(
+            "delimiter must be a single ASCII character, got {c:?}"
+        ));
+    }
+    if c.is_alphanumeric() || c == '"' || c == '\n' || c == '\r' {
+        return Err(format!("'{c}' is not a valid field delimiter"));
+    }
+    Ok(c as u8)
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    let explicit_delimiter = match cli.delimiter.map(parse_delimiter) {
+        Some(Err(msg)) => {
+            eprintln!("error: {msg}");
+            return ExitCode::from(2);
+        }
+        Some(Ok(b)) => Some(b),
+        None => None,
+    };
 
     let opts = headless::Options {
         file: cli.file.clone().unwrap_or_default(),
@@ -54,6 +80,7 @@ fn main() -> ExitCode {
             .chunks_exact(2)
             .map(|c| (c[0].clone(), c[1].clone()))
             .collect(),
+        delimiter: explicit_delimiter,
     };
 
     if opts.is_active() {
@@ -71,7 +98,7 @@ fn main() -> ExitCode {
         };
     }
 
-    match run_tui(cli.file.as_deref()) {
+    match run_tui(cli.file.as_deref(), explicit_delimiter) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
@@ -80,11 +107,14 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_tui(file: Option<&std::path::Path>) -> Result<(), Box<dyn std::error::Error>> {
+fn run_tui(
+    file: Option<&std::path::Path>,
+    explicit_delimiter: Option<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
 
     if let Some(path) = file {
-        load_file(&mut app, path)?;
+        load_file(&mut app, path, explicit_delimiter)?;
     }
 
     enable_raw_mode()?;
@@ -101,7 +131,11 @@ fn run_tui(file: Option<&std::path::Path>) -> Result<(), Box<dyn std::error::Err
     result
 }
 
-fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn load_file(
+    app: &mut App,
+    path: &std::path::Path,
+    explicit_delimiter: Option<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
     use cell_sheet_core::formula::deps::{recalculate, set_formula};
 
     let ext = path
@@ -109,31 +143,36 @@ fn load_file(app: &mut App, path: &std::path::Path) -> Result<(), Box<dyn std::e
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
+
     match ext.as_str() {
-        "csv" => {
-            let file = std::fs::File::open(path)?;
-            app.sheet = cell_sheet_core::io::csv::read_csv(file, b',')?;
-            app.file_format = FileFormat::Csv;
-        }
-        "tsv" => {
-            let file = std::fs::File::open(path)?;
-            app.sheet = cell_sheet_core::io::csv::read_csv(file, b'\t')?;
-            app.file_format = FileFormat::Tsv;
-        }
         "cell" => {
             let file = std::fs::File::open(path)?;
             app.sheet = cell_sheet_core::io::cell_format::read_cell_format(file)?;
             app.file_format = FileFormat::Cell;
         }
         _ => {
-            let file = std::fs::File::open(path)?;
-            app.sheet = cell_sheet_core::io::csv::read_csv(file, b',')?;
-            app.file_format = FileFormat::Csv;
+            // Read entire file once; use the same bytes for sniffing and parsing.
+            let data = std::fs::read(path)?;
+            let delimiter = if let Some(d) = explicit_delimiter {
+                d
+            } else if ext == "tsv" {
+                b'\t'
+            } else {
+                cell_sheet_core::io::csv::sniff_delimiter(&data)
+            };
+            app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
+            app.file_format = if ext == "tsv" {
+                FileFormat::Tsv
+            } else {
+                FileFormat::Csv
+            };
+            app.delimiter = delimiter;
         }
     }
+
     app.file_path = Some(path.to_path_buf());
 
-    // Register formulas in the dependency graph and evaluate them
+    // Register formulas in the dependency graph and evaluate them.
     let formula_cells: Vec<_> = app
         .sheet
         .cells
