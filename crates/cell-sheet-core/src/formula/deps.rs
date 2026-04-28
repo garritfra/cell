@@ -5,6 +5,7 @@ use crate::formula::eval;
 use crate::formula::parser;
 use crate::model::{CellError, CellPos, CellValue, Sheet};
 
+#[derive(Debug, Clone)]
 pub struct DepGraph {
     pub dependents: HashMap<CellPos, HashSet<CellPos>>,
     pub dependencies: HashMap<CellPos, HashSet<CellPos>>,

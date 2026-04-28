@@ -60,6 +60,7 @@ pub struct Cell {
     pub dirty: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct Sheet {
     pub cells: HashMap<CellPos, Cell>,
     pub col_widths: Vec<u16>,
