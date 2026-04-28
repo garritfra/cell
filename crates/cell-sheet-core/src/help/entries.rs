@@ -290,13 +290,13 @@ pub static COMMAND_ENTRIES: &[HelpEntry] = &[
         tags: &[":w", ":write"],
         category: HelpCategory::Command,
         summary: "Save file",
-        detail: "Write the current sheet to disk. If no filename has been set,\nuse :w <path> to specify one.\n\nIf the sheet contains formulas and you save as CSV/TSV,\nCell will warn you. Use :w file.cell to preserve formulas,\nor :w! to force save as CSV (formulas become values).",
+        detail: "Write the current sheet to disk. If no filename has been set,\nuse :w <path> to specify one.\n\nIf the sheet contains formulas and you save as CSV/TSV,\nCell will warn you. Use :w file.cell to preserve formulas,\nor :w! to force save as CSV (formulas become values).\n\nIf the active delimiter (see :set delimiter) does not match\nthe file extension convention, Cell will also warn you.\nUse :w! to override.",
     },
     HelpEntry {
         tags: &[":w!"],
         category: HelpCategory::Command,
         summary: "Force save",
-        detail: "Write the current sheet to disk, even if formulas would be\nlost by saving as CSV/TSV.",
+        detail: "Write the current sheet to disk, bypassing both the\nformula-flatten warning and the non-standard-delimiter warning.",
     },
     HelpEntry {
         tags: &[":q", ":quit"],
@@ -327,6 +327,12 @@ pub static COMMAND_ENTRIES: &[HelpEntry] = &[
         category: HelpCategory::Command,
         summary: "Sort by column",
         detail: "Sort all rows by the values in a column.\nUsage: :sort <column> [asc|desc]\n\nExamples:\n  :sort A        Sort by column A ascending\n  :sort B desc   Sort by column B descending",
+    },
+    HelpEntry {
+        tags: &[":set delimiter", ":set", "--delimiter"],
+        category: HelpCategory::Command,
+        summary: "Set the field delimiter",
+        detail: "Set the delimiter character used when reading or saving\nCSV/TSV files.\n\nUsage (ex-command):  :set delimiter=|\n                     :set delimiter=;\nUsage (CLI flag):    cell data.psv --delimiter '|'\n\nValid delimiters: any single printable ASCII character that\nis not a letter, digit, or double-quote (e.g. | ; , \\t).\n\nThe delimiter is auto-detected from file content on open\nwhen the --delimiter flag is not provided and the extension\nis not .tsv. Use --delimiter to override detection.\n\n:set delimiter only affects the next save — it does not\nre-parse the currently loaded file. To reload with a new\ndelimiter, close and reopen the file with --delimiter.",
     },
     HelpEntry {
         tags: &[":help"],
