@@ -347,3 +347,50 @@ fn stdin_write_errors_without_file() {
     assert!(!out.status.success());
     assert!(!stderr(&out).is_empty());
 }
+
+#[test]
+fn stdin_cell_format_read_single_cell() {
+    // .cell format uses the row number directly in addresses (A0 == row 0),
+    // while --read takes A1-style 1-indexed refs (A1 == row 0).
+    let cell_blob = b"# cell v1\nsize 1 1\nlet A0 = 42\n";
+    let out = run_with_stdin(&["--read", "A1"], cell_blob);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "42\n");
+}
+
+#[test]
+fn stdin_cell_format_read_evaluates_formula() {
+    // Cell-format address syntax (`let A0 ...`) is 0-indexed by row number,
+    // but formula refs (`=A1+B1`) are 1-indexed — so A1/B1 inside the formula
+    // resolve to row 0 cols 0/1, where the values 5 and 7 live. The formula
+    // is stored at storage-address B1 (row 1, col 1), and --read B2 (1-indexed
+    // row 1, col 1) should print the computed value, proving the dep graph
+    // and recalc fired during stdin load.
+    let cell_blob = b"# cell v1\nsize 2 2\nlet A0 = 5\nlet B0 = 7\nformula B1 = =A1+B1\n";
+    let out = run_with_stdin(&["--read", "B2"], cell_blob);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "12\n");
+}
+
+#[test]
+fn stdin_cell_format_eval_sum() {
+    let cell_blob = b"# cell v1\nsize 4 1\nlet A0 = 1\nlet A1 = 2\nlet A2 = 3\nlet A3 = 4\n";
+    let out = run_with_stdin(&["--eval", "=SUM(A1:A4)"], cell_blob);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "10\n");
+}
+
+#[test]
+fn stdin_cell_format_rejects_explicit_delimiter() {
+    // Pipe a .cell-format blob with --delimiter set: the flag is meaningless
+    // for the native format, so we surface a clear error instead of silently
+    // ignoring it.
+    let cell_blob = b"# cell v1\nsize 1 1\nlet A0 = 1\n";
+    let out = run_with_stdin(&["--delimiter", "|", "--read", "A1"], cell_blob);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(
+        err.contains("--delimiter"),
+        "expected --delimiter mention in error: {err}"
+    );
+}

@@ -218,11 +218,22 @@ fn load_stdin_data(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cell_sheet_core::formula::deps::{recalculate, set_formula};
 
-    let delimiter =
-        explicit_delimiter.unwrap_or_else(|| cell_sheet_core::io::csv::sniff_delimiter(&data));
-    app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
-    app.file_format = FileFormat::Csv;
-    app.delimiter = delimiter;
+    // Detect the native .cell format by its magic header. Anything else is
+    // treated as CSV/TSV with delimiter sniffing (or an explicit override).
+    if data.starts_with(b"# cell v") {
+        if explicit_delimiter.is_some() {
+            return Err("--delimiter has no effect on .cell-format input piped to stdin".into());
+        }
+        app.sheet = cell_sheet_core::io::cell_format::read_cell_format(data.as_slice())?;
+        app.file_format = FileFormat::Cell;
+        // delimiter stays at its default; .cell format doesn't use one
+    } else {
+        let delimiter =
+            explicit_delimiter.unwrap_or_else(|| cell_sheet_core::io::csv::sniff_delimiter(&data));
+        app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
+        app.file_format = FileFormat::Csv;
+        app.delimiter = delimiter;
+    }
     // file_path stays None — unnamed buffer; :w <path> still works to save
 
     let formula_cells: Vec<_> = app

@@ -38,6 +38,25 @@ impl Format {
     }
 }
 
+/// Magic header for the native `.cell` text format. Both the existing
+/// writer (`write_cell_format`) and reader (`read_cell_format`) anchor on
+/// `# cell v1` as the first line, so detecting it on a stdin byte stream
+/// is unambiguous and safe to use to dispatch between the cell-format and
+/// CSV/TSV readers.
+const CELL_FORMAT_MAGIC: &[u8] = b"# cell v";
+
+/// Detect whether a stdin byte stream is in the native `.cell` format.
+/// Returns `Format::Cell` when the first line begins with the cell-format
+/// magic header, otherwise `Format::Csv` (CSV/TSV both go through
+/// `csv_io::read_csv`, with the delimiter sniffed separately).
+fn detect_stdin_format(data: &[u8]) -> Format {
+    if data.starts_with(CELL_FORMAT_MAGIC) {
+        Format::Cell
+    } else {
+        Format::Csv
+    }
+}
+
 #[derive(Debug)]
 pub struct Options {
     pub file: PathBuf,
@@ -81,11 +100,17 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
                     .to_string(),
             );
         }
+        let format = detect_stdin_format(data);
+        if matches!(format, Format::Cell) && opts.delimiter.is_some() {
+            return Err(
+                "--delimiter has no effect on .cell-format input piped to stdin".to_string(),
+            );
+        }
         let delimiter = opts
             .delimiter
             .unwrap_or_else(|| csv_io::sniff_delimiter(data));
-        let (sheet, deps) =
-            load_from_bytes(data, delimiter).map_err(|e| format!("failed to parse stdin: {e}"))?;
+        let (sheet, deps) = load_from_bytes(data, format, delimiter)
+            .map_err(|e| format!("failed to parse stdin: {e}"))?;
         (sheet, deps, None::<(Format, u8)>)
     } else {
         let format = Format::from_path(&opts.file);
@@ -164,9 +189,13 @@ fn load(
 
 fn load_from_bytes(
     data: &[u8],
+    format: Format,
     delimiter: u8,
 ) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
-    let mut sheet = csv_io::read_csv(data, delimiter)?;
+    let mut sheet = match format {
+        Format::Cell => cell_format::read_cell_format(data)?,
+        Format::Csv | Format::Tsv => csv_io::read_csv(data, delimiter)?,
+    };
     let mut deps = DepGraph::new();
 
     let formula_cells: Vec<_> = sheet
