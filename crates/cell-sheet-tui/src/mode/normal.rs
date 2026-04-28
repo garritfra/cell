@@ -456,6 +456,10 @@ impl NormalState {
                 self.discard_count();
                 Action::ChangeMode(Mode::Insert)
             }
+            KeyCode::Char('.') => {
+                self.discard_count();
+                Action::RepeatLastChange
+            }
             _ => {
                 // Unknown key: throw away any pending count so we don't
                 // silently apply it to the next valid command.
@@ -883,6 +887,16 @@ mod tests {
         assert_eq!(
             state.handle_key(key(KeyCode::Tab), &app),
             Action::JumpForward
+        );
+    }
+
+    #[test]
+    fn dot_emits_repeat_last_change() {
+        let app = App::new();
+        let mut state = NormalState::new();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('.')), &app),
+            Action::RepeatLastChange
         );
     }
 

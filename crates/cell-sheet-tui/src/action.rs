@@ -157,6 +157,8 @@ pub enum Action {
     ReselectLastVisual,
     SetDelimiter(u8),
     SetStatus(String),
+    /// Re-apply the last recorded cell-mutating operation at the current cursor.
+    RepeatLastChange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

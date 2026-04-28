@@ -194,6 +194,15 @@ pub static NORMAL_ENTRIES: &[HelpEntry] = &[
         detail: "Paste the register contents above the current row (for row/block\nregisters) or into the current cell (for cell registers).\nFormula references are adjusted automatically.",
     },
     HelpEntry {
+        tags: &["."],
+        category: HelpCategory::Normal,
+        summary: "Repeat last change",
+        detail: "Re-apply the last cell-mutating operation at the current cursor \
+                 position. Works after x, dd, d (visual), p, P, and any edit committed from \
+                 Insert mode (i/a/c + Esc or Enter). u and Ctrl-r do not affect \
+                 the repeat register.",
+    },
+    HelpEntry {
         tags: &["u"],
         category: HelpCategory::Normal,
         summary: "Undo",
