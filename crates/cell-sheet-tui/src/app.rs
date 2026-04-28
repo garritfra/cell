@@ -211,6 +211,7 @@ impl App {
                     self.sheet.clear_cell(pos);
                     self.dirty = true;
                 }
+                self.last_change = Some(Action::ClearCell(pos));
             }
             Action::ChangeCell(pos) => {
                 let old_raw = self
@@ -578,6 +579,7 @@ impl App {
                     self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
                     self.dirty = true;
                 }
+                self.last_change = Some(Action::DeleteRow { start, count });
             }
             Action::Paste(pos) | Action::PasteBefore(pos) => {
                 let is_after = matches!(action, Action::Paste(_));
@@ -2635,6 +2637,42 @@ mod tests {
         app.process_action(Action::RepeatLastChange);
         assert_eq!(
             app.sheet.get_cell((0, 2)).map(|c| c.raw.as_str()),
+            Some("x")
+        );
+    }
+
+    #[test]
+    fn dot_repeats_clear_cell() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((0, 1), "b".into()));
+        app.process_action(Action::ClearCell((0, 0)));
+        app.cursor = (0, 1);
+        app.process_action(Action::RepeatLastChange);
+        assert!(app.sheet.get_cell((0, 1)).is_none());
+    }
+
+    #[test]
+    fn dot_repeats_dd_at_new_row() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "a".into()));
+        app.process_action(Action::EditCell((1, 0), "b".into()));
+        app.process_action(Action::DeleteRow { start: 0, count: 1 });
+        app.cursor = (1, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert!(app.sheet.get_cell((1, 0)).is_none());
+    }
+
+    #[test]
+    fn dot_after_undo_does_not_undo_again() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "x".into()));
+        app.process_action(Action::Undo);
+        assert!(app.sheet.get_cell((0, 0)).is_none());
+        app.cursor = (0, 0);
+        app.process_action(Action::RepeatLastChange);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
             Some("x")
         );
     }
