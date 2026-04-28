@@ -278,6 +278,24 @@ mod tests {
     }
 
     #[test]
+    fn sniff_respects_4kib_cap_on_long_first_line() {
+        // First line is 4097 bytes: 4096 pipes followed by one comma.
+        // Only the first 4096 bytes are inspected, so pipe wins.
+        let mut line = vec![b'|'; 4096];
+        line.push(b',');
+        line.push(b'\n');
+        assert_eq!(sniff_delimiter(&line), b'|');
+    }
+
+    #[test]
+    fn sniff_crlf_line_ending() {
+        // Windows-style CRLF — \r is not a candidate, so it's harmless;
+        // sniff should still correctly detect the pipe on the first line.
+        let sample = b"a|b|c\r\n1,2,3\n";
+        assert_eq!(sniff_delimiter(sample), b'|');
+    }
+
+    #[test]
     fn sniff_then_read_round_trip() {
         let data = b"x|y|z\n1|2|3\n";
         let delim = sniff_delimiter(data);
