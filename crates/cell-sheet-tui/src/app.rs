@@ -48,6 +48,10 @@ pub struct App {
     pub jump_list: Vec<CellPos>,
     pub jump_idx: usize,
     pub last_visual: Option<LastVisual>,
+    /// Depth counter for deferred recalculation batches.
+    /// When > 0, `EditCell` skips `recalculate`; `commit_batch` triggers it
+    /// once when the outermost batch is closed.
+    batch_depth: u32,
 }
 
 const JUMP_LIST_CAP: usize = 100;
@@ -88,6 +92,7 @@ impl App {
             jump_list: Vec::new(),
             jump_idx: 0,
             last_visual: None,
+            batch_depth: 0,
         }
     }
 
@@ -155,7 +160,9 @@ impl App {
                     self.sheet.set_cell(pos, &raw);
                 }
                 mark_dirty(&mut self.sheet, &self.deps, pos);
-                recalculate(&mut self.sheet, &self.deps);
+                if self.batch_depth == 0 {
+                    recalculate(&mut self.sheet, &self.deps);
+                }
                 self.dirty = true;
             }
             Action::ChangeMode(mode) => {
@@ -216,6 +223,8 @@ impl App {
             }
             Action::ChangeRange { start, end } => {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
+                let mut changes = Vec::new();
+                self.begin_batch();
                 for row in start.0..=end.0 {
                     for col in start.1..=max_col {
                         let old_raw = self
@@ -224,16 +233,16 @@ impl App {
                             .map(|c| c.raw.clone())
                             .unwrap_or_default();
                         if !old_raw.is_empty() {
-                            self.undo_stack.push(UndoEntry::CellEdit {
-                                pos: (row, col),
-                                old_raw,
-                                new_raw: String::new(),
-                            });
-                            self.sheet.clear_cell((row, col));
+                            changes.push(((row, col), old_raw, String::new()));
+                            self.write_cell_raw((row, col), "");
                         }
                     }
                 }
-                self.dirty = true;
+                if !changes.is_empty() {
+                    self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
+                    self.dirty = true;
+                }
+                self.commit_batch();
                 self.insert_buffer = String::new();
                 self.mode = Mode::Insert;
             }
@@ -494,6 +503,7 @@ impl App {
                 let max_col = end.1.min(self.sheet.col_count.saturating_sub(1));
                 let mut block = Vec::new();
                 let mut changes = Vec::new();
+                self.begin_batch();
                 for row in start.0..=end.0 {
                     let mut row_data = Vec::new();
                     for col in start.1..=max_col {
@@ -513,14 +523,15 @@ impl App {
                 self.register = Some(Register::Block(block));
                 if !changes.is_empty() {
                     self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
-                    recalculate(&mut self.sheet, &self.deps);
                     self.dirty = true;
                 }
+                self.commit_batch();
             }
             Action::DeleteRow { start, count } => {
                 let count = count.max(1);
                 let cols = self.sheet.col_count;
                 let mut changes = Vec::new();
+                self.begin_batch();
                 if count == 1 {
                     let mut cells = Vec::with_capacity(cols);
                     for col in 0..cols {
@@ -531,7 +542,7 @@ impl App {
                             .unwrap_or_default();
                         if !raw.is_empty() {
                             changes.push(((start, col), raw.clone(), String::new()));
-                            self.sheet.clear_cell((start, col));
+                            self.write_cell_raw((start, col), "");
                         }
                         cells.push(raw);
                     }
@@ -548,7 +559,7 @@ impl App {
                                 .unwrap_or_default();
                             if !raw.is_empty() {
                                 changes.push(((r, col), raw.clone(), String::new()));
-                                self.sheet.clear_cell((r, col));
+                                self.write_cell_raw((r, col), "");
                             }
                             row_cells.push(raw);
                         }
@@ -560,11 +571,13 @@ impl App {
                     self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
                     self.dirty = true;
                 }
+                self.commit_batch();
             }
             Action::Paste(pos) | Action::PasteBefore(pos) => {
                 let is_after = matches!(action, Action::Paste(_));
                 if let Some(reg) = &self.register.clone() {
                     let mut changes: Vec<(CellPos, String, String)> = Vec::new();
+                    self.begin_batch();
                     match reg {
                         Register::Cell(raw) => {
                             let adjusted = crate::clipboard::adjust_formula(raw, 0, 0);
@@ -659,9 +672,9 @@ impl App {
                     }
                     if !changes.is_empty() {
                         self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
-                        recalculate(&mut self.sheet, &self.deps);
                         self.dirty = true;
                     }
+                    self.commit_batch();
                 }
             }
             Action::NextNonEmpty(count) => {
@@ -1027,15 +1040,39 @@ impl App {
             } => {
                 let raw = if redo { new_raw } else { old_raw };
                 self.write_cell_raw(*pos, raw);
-                recalculate(&mut self.sheet, &self.deps);
+                if self.batch_depth == 0 {
+                    recalculate(&mut self.sheet, &self.deps);
+                }
             }
             UndoEntry::MultiCellEdit { changes } => {
+                self.begin_batch();
                 for (pos, old_raw, new_raw) in changes {
                     let raw = if redo { new_raw } else { old_raw };
                     self.write_cell_raw(*pos, raw);
                 }
-                recalculate(&mut self.sheet, &self.deps);
+                self.commit_batch();
             }
+        }
+    }
+
+    /// Start a deferred-recalculation batch. While a batch is active,
+    /// `EditCell` writes cells and marks them dirty but defers the full
+    /// topological recalc. The recalc runs once when `commit_batch` returns
+    /// the depth to zero. Batches nest: every `begin_batch` must have a
+    /// matching `commit_batch`.
+    pub fn begin_batch(&mut self) {
+        self.batch_depth += 1;
+    }
+
+    /// End a deferred-recalculation batch. Triggers `recalculate` exactly
+    /// once when the outermost batch is committed (depth returns to zero).
+    pub fn commit_batch(&mut self) {
+        if self.batch_depth == 0 {
+            return;
+        }
+        self.batch_depth -= 1;
+        if self.batch_depth == 0 {
+            recalculate(&mut self.sheet, &self.deps);
         }
     }
 
@@ -2421,6 +2458,142 @@ mod tests {
         assert!(
             !msg.contains("Non-standard delimiter"),
             "ForceSave should bypass delimiter warning, got: {msg:?}"
+        );
+    }
+
+    // ── ChangeRange recalculation ───────────────────────────────────────────
+
+    #[test]
+    fn change_range_updates_dependents() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 1), "99".into()));
+        app.process_action(Action::EditCell((0, 0), "=B1".into()));
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(99.0)
+        );
+        app.process_action(Action::ChangeRange {
+            start: (0, 1),
+            end: (0, 1),
+        });
+        // B1 was cleared; =B1 must not keep the stale 99 value
+        let val = app.sheet.get_cell((0, 0)).map(|c| c.value.clone());
+        assert_ne!(
+            val,
+            Some(cell_sheet_core::model::CellValue::Number(99.0)),
+            "A1 must not keep stale value after B1 is cleared by ChangeRange"
+        );
+    }
+
+    // ── DeleteRow recalculation ─────────────────────────────────────────────
+
+    #[test]
+    fn delete_row_updates_dependents() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "10".into()));
+        app.process_action(Action::EditCell((0, 1), "20".into()));
+        app.process_action(Action::EditCell((1, 0), "=A1+B1".into()));
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(30.0)
+        );
+        app.process_action(Action::DeleteRow { start: 0, count: 1 });
+        let val = app.sheet.get_cell((1, 0)).map(|c| c.value.clone());
+        assert_ne!(
+            val,
+            Some(cell_sheet_core::model::CellValue::Number(30.0)),
+            "formula depending on deleted row must not keep stale value"
+        );
+    }
+
+    #[test]
+    fn delete_multiple_rows_updates_dependents() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::EditCell((1, 0), "7".into()));
+        app.process_action(Action::EditCell((2, 0), "=A1+A2".into()));
+        assert_eq!(
+            app.sheet.get_cell((2, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(12.0)
+        );
+        app.process_action(Action::DeleteRow { start: 0, count: 2 });
+        let val = app.sheet.get_cell((2, 0)).map(|c| c.value.clone());
+        assert_ne!(
+            val,
+            Some(cell_sheet_core::model::CellValue::Number(12.0)),
+            "formula depending on deleted rows must not keep stale value"
+        );
+    }
+
+    // ── begin_batch / commit_batch ──────────────────────────────────────────
+
+    #[test]
+    fn begin_commit_batch_defers_recalc() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "1".into()));
+        app.process_action(Action::EditCell((1, 0), "=A1".into()));
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(1.0)
+        );
+
+        app.begin_batch();
+        app.process_action(Action::EditCell((0, 0), "42".into()));
+        // Inside the batch, A2 must be dirty but not yet recalculated.
+        assert!(
+            app.sheet.get_cell((1, 0)).map(|c| c.dirty).unwrap_or(false),
+            "A2 should be dirty inside a batch"
+        );
+        app.commit_batch();
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(42.0),
+            "A2 must be recalculated after commit_batch"
+        );
+    }
+
+    #[test]
+    fn batch_inter_dependent_cells() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "5".into()));
+        app.process_action(Action::EditCell((0, 1), "=A1".into()));
+        app.process_action(Action::EditCell((0, 2), "=B1".into()));
+
+        app.begin_batch();
+        app.process_action(Action::EditCell((0, 0), "99".into()));
+        app.commit_batch();
+
+        assert_eq!(
+            app.sheet.get_cell((0, 1)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(99.0)
+        );
+        assert_eq!(
+            app.sheet.get_cell((0, 2)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(99.0)
+        );
+    }
+
+    #[test]
+    fn nested_batches_recalc_on_outermost_commit() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "1".into()));
+        app.process_action(Action::EditCell((1, 0), "=A1".into()));
+
+        app.begin_batch();
+        app.begin_batch();
+        app.process_action(Action::EditCell((0, 0), "10".into()));
+        // First commit — still inside outer batch; no recalc yet.
+        app.commit_batch();
+        assert!(
+            app.sheet.get_cell((1, 0)).map(|c| c.dirty).unwrap_or(false),
+            "A2 must still be dirty after inner commit"
+        );
+        // Second commit — outermost; recalc fires.
+        app.commit_batch();
+        assert_eq!(
+            app.sheet.get_cell((1, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(10.0),
+            "A2 must be updated after outermost commit"
         );
     }
 }
