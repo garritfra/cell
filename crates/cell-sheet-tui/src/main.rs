@@ -290,7 +290,7 @@ fn run_loop(
                         }
                     },
                     Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
-                        if let Some(ref vs) = visual_state {
+                        if let Some(ref mut vs) = visual_state {
                             let action = vs.handle_key(key, app);
                             let exits = matches!(
                                 action,
