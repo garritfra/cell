@@ -1,12 +1,10 @@
-// Foundation for mouse support. Constructed and called by later tasks
-// (render layer publishes a `GridLayout`, the event loop calls `hit_test`).
-// Until those tasks land the items only have test-side users.
-#![allow(dead_code)]
-
 use cell_sheet_core::model::CellPos;
 
 /// Logical region a screen coordinate maps to. Built by [`hit_test`] from
 /// a [`GridLayout`] published by the render layer.
+// Tests reference every variant, so `#[expect(dead_code)]` would fire as
+// unfulfilled in the test build; fall back to `#[allow]` per review.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseTarget {
     Cell(CellPos),
@@ -18,6 +16,10 @@ pub enum MouseTarget {
 /// Geometry snapshot of the most recent grid render. Built by
 /// `render::grid::Grid::render` and stashed on `App` so the next mouse
 /// event can hit-test against accurate coordinates.
+#[expect(
+    dead_code,
+    reason = "wired up by render layer / event loop in Tasks 3-4"
+)]
 #[derive(Debug, Clone)]
 pub struct GridLayout {
     /// Top-left corner of the grid widget (in terminal cells).
@@ -38,6 +40,9 @@ pub struct GridLayout {
 }
 
 /// Map a terminal coordinate to a [`MouseTarget`]. Pure.
+// Tests call `hit_test`, so `#[expect(dead_code)]` would fire as unfulfilled
+// in the test build; fall back to `#[allow]` per review.
+#[allow(dead_code)]
 pub fn hit_test(layout: &GridLayout, x: u16, y: u16) -> MouseTarget {
     let in_x = x >= layout.x && x < layout.x + layout.width;
     let in_y = y >= layout.y && y < layout.y + layout.height;
@@ -152,5 +157,11 @@ mod tests {
         layout.row_offset = 100;
         // y=2 → row_offset_y = 2 - 2 = 0 → row 100
         assert_eq!(hit_test(&layout, 8, 2), MouseTarget::Cell((100, 0)));
+    }
+
+    #[test]
+    fn click_in_inter_column_gap_is_outside() {
+        // x=16 sits between col 0 (6..16) and col 1 (17..29).
+        assert_eq!(hit_test(&fixture(), 16, 3), MouseTarget::Outside);
     }
 }
