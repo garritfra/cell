@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Opening a `.cell` file with a corrupted `size` or `col-width` header now
+  exits with a clear `"corrupted .cell file: ..."` diagnostic instead of
+  silently loading a 0×0 sheet and risking a save over real data
+  ([#83](https://github.com/garritfra/cell/pull/83)).
 - `:help` and the `:help <topic>` lookup now know about the 0.3.0 viewport
   motions (`zz` / `zt` / `zb`, `H` / `M` / `L`, `Ctrl-e` / `Ctrl-y`), marks
   (`m{a-z}` / `'{a-z}` / `` `{a-z} ``), the jump list (`Ctrl-o` / `Ctrl-i` /
