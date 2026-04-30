@@ -247,15 +247,25 @@ via `Action::SetStatus("failed to enable mouse: <err>")` and leave
   observing the flag change (because `process_action` does not own
   stdout).
 - `Action::MouseClickCell(pos)` → set `app.cursor = pos`,
-  `viewport.ensure_visible(pos)`. (No selection.)
-- `Action::MouseDragTo(pos)` → set `app.cursor = pos`,
-  `viewport.ensure_visible(pos)`. The active `VisualState` (created on
-  the prior `Down`) extends naturally because Visual selection is
-  derived from `anchor` and `cursor`.
-- `Action::MouseSelectColumn(c)` / `MouseSelectRow(r)` → enter
-  `VisualBlock` with anchor and cursor spanning the full column or row,
-  reusing the existing whole-column/whole-row selection paths if any
-  exist; otherwise build the equivalent `VisualState` directly.
+  `viewport.ensure_visible(pos)`. The mode stays `Normal`. (A bare
+  click never produces a selection — only a drag does.)
+- `Action::MouseDragTo(pos)` → if the app is currently in `Normal`
+  mode, the handler emits this only on the *first* `Drag(Left)` event
+  after a `Down(Left)`, and `run_loop` enters `Visual` mode with
+  `anchor = MouseDragState::DraggingCells.anchor` before processing
+  the action — exactly the way `Action::ChangeMode(Mode::Visual)` is
+  handled today. On subsequent `Drag` events while already in
+  `Visual`, this just sets `app.cursor = pos` and
+  `viewport.ensure_visible(pos)`; the existing `VisualState` extends
+  naturally because Visual selection is derived from `anchor` and
+  `cursor`.
+- `Action::MouseSelectColumn(c)` → set cursor to row 0 of column `c`
+  and enter `VisualBlock` with anchor at `(0, c)` and cursor at
+  `(last_row, c)` so the whole column is selected. On a subsequent
+  drag, anchor stays at `(0, original_anchor_col)`, cursor moves to
+  `(last_row, target_col)`.
+- `Action::MouseSelectRow(r)` → mirror image: anchor `(r, 0)`, cursor
+  `(r, last_col)`.
 - `Action::MouseScroll { dx, dy }` → mutate `viewport.row_offset` and
   `viewport.col_offset` only. Cursor is **not** moved, even if it
   scrolls out of view (matches Vim).
