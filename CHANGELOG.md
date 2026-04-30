@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Optional mouse support (off by default; enable with `:set mouse on`).
+  Left-click moves the cursor; click+drag selects a range; clicks on
+  column/row headers select whole columns/rows; scroll wheel scrolls
+  the viewport without moving the cursor; double-click enters Insert
+  mode. Hold Shift (or your terminal's bypass modifier) to use native
+  text selection for copy. (#70)
+
 ### Fixed
 
 - `:help` and the `:help <topic>` lookup now know about the 0.3.0 viewport

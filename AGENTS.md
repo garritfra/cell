@@ -173,6 +173,9 @@ When changing serialization, double-check round-trip behavior:
   `[Releasing](README.md#releasing)` flow — that's a maintainer action.
 - Force-pushing, rewriting published history, or skipping pre-commit hooks.
 - Generating very long binary blobs, hashes, or auto-generated payloads.
+- Enabling mouse capture unconditionally. Mouse support is opt-in via
+  the `mouse_enabled` runtime flag set by `:set mouse on`; do not
+  bypass it.
 
 ## Further reading
 
