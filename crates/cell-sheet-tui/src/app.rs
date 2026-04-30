@@ -900,6 +900,20 @@ impl App {
                 self.cursor = (row, last_col);
                 self.viewport.ensure_visible(self.cursor);
             }
+            Action::MouseScroll { dx, dy } => {
+                if dy > 0 {
+                    self.viewport.row_offset = self.viewport.row_offset.saturating_add(dy as usize);
+                } else if dy < 0 {
+                    self.viewport.row_offset =
+                        self.viewport.row_offset.saturating_sub((-dy) as usize);
+                }
+                if dx > 0 {
+                    self.viewport.col_offset = self.viewport.col_offset.saturating_add(dx as usize);
+                } else if dx < 0 {
+                    self.viewport.col_offset =
+                        self.viewport.col_offset.saturating_sub((-dx) as usize);
+                }
+            }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }

@@ -79,6 +79,8 @@ use std::time::Instant;
 #[allow(dead_code)]
 pub const DOUBLE_CLICK_MS: u64 = 400;
 
+pub const MOUSE_SCROLL_LINES: i32 = 3;
+
 #[derive(Debug, Default)]
 pub struct MouseState {
     pub drag: MouseDragState,
@@ -177,6 +179,22 @@ pub fn handle_mouse_event(
             state.drag = MouseDragState::Idle;
             Action::Noop
         }
+        MouseEventKind::ScrollDown => Action::MouseScroll {
+            dx: 0,
+            dy: MOUSE_SCROLL_LINES,
+        },
+        MouseEventKind::ScrollUp => Action::MouseScroll {
+            dx: 0,
+            dy: -MOUSE_SCROLL_LINES,
+        },
+        MouseEventKind::ScrollLeft => Action::MouseScroll {
+            dx: -MOUSE_SCROLL_LINES,
+            dy: 0,
+        },
+        MouseEventKind::ScrollRight => Action::MouseScroll {
+            dx: MOUSE_SCROLL_LINES,
+            dy: 0,
+        },
         _ => Action::Noop,
     }
 }
@@ -491,5 +509,70 @@ mod tests {
             handle_mouse_event(drag, &mut state, &app, Some(&layout)),
             Action::MouseSelectRow(4)
         );
+    }
+
+    #[test]
+    fn scroll_down_emits_positive_dy() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = synth(MouseEventKind::ScrollDown, 8, 3);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 0, dy: 3 }
+        );
+    }
+
+    #[test]
+    fn scroll_up_emits_negative_dy() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = synth(MouseEventKind::ScrollUp, 8, 3);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 0, dy: -3 }
+        );
+    }
+
+    #[test]
+    fn scroll_left_emits_negative_dx() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = synth(MouseEventKind::ScrollLeft, 8, 3);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: -3, dy: 0 }
+        );
+    }
+
+    #[test]
+    fn scroll_right_emits_positive_dx() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = synth(MouseEventKind::ScrollRight, 8, 3);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 3, dy: 0 }
+        );
+    }
+
+    #[test]
+    fn scroll_does_not_move_cursor() {
+        let mut app = App::new();
+        app.cursor = (5, 2);
+        app.process_action(Action::MouseScroll { dx: 0, dy: 3 });
+        assert_eq!(app.cursor, (5, 2));
+        assert_eq!(app.viewport.row_offset, 3);
+    }
+
+    #[test]
+    fn scroll_up_at_top_saturates_to_zero() {
+        let mut app = App::new();
+        // viewport starts at row_offset=0; scrolling up should saturate.
+        app.process_action(Action::MouseScroll { dx: 0, dy: -10 });
+        assert_eq!(app.viewport.row_offset, 0);
     }
 }

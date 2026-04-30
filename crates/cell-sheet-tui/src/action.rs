@@ -187,6 +187,14 @@ pub enum Action {
     /// Anchor (or extend) a whole-row selection. The corresponding
     /// VisualBlock setup happens in `run_loop`.
     MouseSelectRow(usize),
+    /// Scroll the viewport. `dy > 0` scrolls toward higher row indices
+    /// (content moves up, viewport reveals rows further down). `dx > 0`
+    /// scrolls right. The cursor is NOT moved (matches Vim's mouse
+    /// behaviour).
+    MouseScroll {
+        dx: i32,
+        dy: i32,
+    },
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,
