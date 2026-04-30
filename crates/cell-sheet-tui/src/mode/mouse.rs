@@ -2,8 +2,8 @@ use cell_sheet_core::model::CellPos;
 
 /// Logical region a screen coordinate maps to. Built by [`hit_test`] from
 /// a [`GridLayout`] published by the render layer.
-// Tests reference every variant, so `#[expect(dead_code)]` would fire as
-// unfulfilled in the test build; fall back to `#[allow]` per review.
+// Reachable from tests, but not yet from the bin entry point (the stub
+// `handle_mouse_event` doesn't call `hit_test`). Tasks 5+ wire it up.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseTarget {
@@ -34,8 +34,8 @@ pub struct GridLayout {
 }
 
 /// Map a terminal coordinate to a [`MouseTarget`]. Pure.
-// Tests call `hit_test`, so `#[expect(dead_code)]` would fire as unfulfilled
-// in the test build; fall back to `#[allow]` per review.
+// Reachable from tests, but the bin's `handle_mouse_event` is still a stub.
+// Tasks 5+ call this from the handler body.
 #[allow(dead_code)]
 pub fn hit_test(layout: &GridLayout, x: u16, y: u16) -> MouseTarget {
     let in_x = x >= layout.x && x < layout.x + layout.width;
@@ -73,6 +73,65 @@ pub fn hit_test(layout: &GridLayout, x: u16, y: u16) -> MouseTarget {
         }
     }
     MouseTarget::Outside
+}
+
+use crate::action::Action;
+use crate::app::App;
+use crossterm::event::MouseEvent;
+use std::time::Instant;
+
+// All of these are populated by the stub handler's successors (Tasks 5+).
+// Until then they're constructed only in tests.
+#[allow(dead_code)]
+pub const DOUBLE_CLICK_MS: u64 = 400;
+
+#[allow(dead_code)]
+#[derive(Debug, Default)]
+pub struct MouseState {
+    pub drag: MouseDragState,
+    pub last_click: Option<LastClick>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum MouseDragState {
+    #[default]
+    Idle,
+    DraggingCells {
+        anchor: CellPos,
+    },
+    DraggingColumns {
+        anchor_col: usize,
+    },
+    DraggingRows {
+        anchor_row: usize,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
+pub struct LastClick {
+    pub at: Instant,
+    pub pos: CellPos,
+}
+
+impl MouseState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Translate a single `MouseEvent` into an `Action`. The handler is the
+/// only place that mutates `state` (drag tracking, double-click history).
+/// `app` and `layout` are read-only; the handler does not own selection
+/// or cursor mutations — those live in `App::process_action`.
+pub fn handle_mouse_event(
+    _event: MouseEvent,
+    _state: &mut MouseState,
+    _app: &App,
+    _layout: Option<&GridLayout>,
+) -> Action {
+    Action::Noop
 }
 
 #[cfg(test)]
@@ -156,5 +215,37 @@ mod tests {
     fn click_in_inter_column_gap_is_outside() {
         // x=16 sits between col 0 (6..16) and col 1 (17..29).
         assert_eq!(hit_test(&fixture(), 16, 3), MouseTarget::Outside);
+    }
+
+    use crate::action::Action;
+    use crate::app::App;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    fn synth(kind: MouseEventKind, x: u16, y: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn stub_handler_returns_noop() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::Noop
+        );
+    }
+
+    #[test]
+    fn fresh_mouse_state_is_idle() {
+        let s = MouseState::new();
+        assert_eq!(s.drag, MouseDragState::Idle);
+        assert!(s.last_click.is_none());
     }
 }

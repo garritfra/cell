@@ -11,7 +11,7 @@ use action::{Action, Mode};
 use app::{App, FileFormat};
 use clap::Parser;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -148,6 +148,9 @@ fn run_tui(
 
     let result = run_loop(&mut terminal, &mut app);
 
+    if app.mouse_enabled {
+        let _ = execute!(terminal.backend_mut(), DisableMouseCapture);
+    }
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
@@ -266,8 +269,20 @@ fn run_loop(
     let mut insert_cursor: usize = 0;
     let mut wq_pending = false;
     let mut help_state = HelpState::new();
+    let mut mouse_state = mode::mouse::MouseState::new();
+    let mut mouse_capture_active = false;
 
     loop {
+        if app.mouse_enabled != mouse_capture_active {
+            if app.mouse_enabled {
+                execute!(terminal.backend_mut(), EnableMouseCapture)?;
+            } else {
+                execute!(terminal.backend_mut(), DisableMouseCapture)?;
+                mouse_state = mode::mouse::MouseState::new();
+            }
+            mouse_capture_active = app.mouse_enabled;
+        }
+
         let grid_height = terminal.size()?.height.saturating_sub(3) as usize;
         // The grid widget uses 1 row for column headers, so data rows = grid_height - 1.
         app.viewport.visible_rows = grid_height.saturating_sub(1);
@@ -298,225 +313,241 @@ fn run_loop(
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-
-                app.status_message = None;
-
-                let action = match app.mode {
-                    Mode::Normal => normal_state.handle_key(key, app),
-                    Mode::Insert => match key.code {
-                        KeyCode::Esc | KeyCode::Enter => {
-                            let edit_action = handle_insert_key(key, app);
-                            app.process_action(edit_action);
-                            Action::ChangeMode(Mode::Normal)
-                        }
-                        _ => {
-                            if let Some(insert_action) = handle_insert_char(key) {
-                                match insert_action {
-                                    InsertAction::InsertChar(c) => {
-                                        app.insert_buffer.insert(insert_cursor, c);
-                                        insert_cursor += 1;
-                                    }
-                                    InsertAction::Backspace => {
-                                        if insert_cursor > 0 {
-                                            insert_cursor -= 1;
-                                            app.insert_buffer.remove(insert_cursor);
-                                        }
-                                    }
-                                    InsertAction::Delete => {
-                                        if insert_cursor < app.insert_buffer.len() {
-                                            app.insert_buffer.remove(insert_cursor);
-                                        }
-                                    }
-                                    InsertAction::CursorLeft => {
-                                        insert_cursor = insert_cursor.saturating_sub(1);
-                                    }
-                                    InsertAction::CursorRight => {
-                                        insert_cursor =
-                                            (insert_cursor + 1).min(app.insert_buffer.len());
-                                    }
-                                    InsertAction::CursorHome => {
-                                        insert_cursor = 0;
-                                    }
-                                    InsertAction::CursorEnd => {
-                                        insert_cursor = app.insert_buffer.len();
-                                    }
-                                }
-                            }
-                            Action::Noop
-                        }
-                    },
-                    Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
-                        if let Some(ref mut vs) = visual_state {
-                            let action = vs.handle_key(key, app);
-                            let exits = matches!(
-                                action,
-                                Action::ChangeMode(Mode::Normal)
-                                    | Action::ClearRange { .. }
-                                    | Action::YankRange { .. }
-                                    | Action::ChangeRange { .. }
-                                    | Action::CaseOpRange { .. }
-                            );
-                            if exits {
-                                let anchor = vs.anchor;
-                                let kind = vs.kind;
-                                app.record_last_visual(anchor, kind);
-                                visual_state = None;
-                                app.mode = Mode::Normal;
-                            }
-                            action
-                        } else {
-                            Action::ChangeMode(Mode::Normal)
-                        }
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
                     }
-                    Mode::Help => help_state.handle_key(key, app, grid_height),
-                    Mode::Command => {
-                        use action::{CommandKind, SearchDirection};
-                        let cmd_action = handle_command_key(key, &app.command_line);
-                        let search_dir = match app.command_kind {
-                            CommandKind::Slash => Some(SearchDirection::Forward),
-                            CommandKind::Question => Some(SearchDirection::Backward),
-                            CommandKind::Colon => None,
-                        };
-                        match cmd_action {
-                            CommandAction::InsertChar(c) => {
-                                app.command_line.push(c);
-                                if let Some(dir) = search_dir {
-                                    Action::SearchIncremental {
-                                        pattern: app.command_line.clone(),
-                                        direction: dir,
+
+                    app.status_message = None;
+
+                    let action = match app.mode {
+                        Mode::Normal => normal_state.handle_key(key, app),
+                        Mode::Insert => match key.code {
+                            KeyCode::Esc | KeyCode::Enter => {
+                                let edit_action = handle_insert_key(key, app);
+                                app.process_action(edit_action);
+                                Action::ChangeMode(Mode::Normal)
+                            }
+                            _ => {
+                                if let Some(insert_action) = handle_insert_char(key) {
+                                    match insert_action {
+                                        InsertAction::InsertChar(c) => {
+                                            app.insert_buffer.insert(insert_cursor, c);
+                                            insert_cursor += 1;
+                                        }
+                                        InsertAction::Backspace => {
+                                            if insert_cursor > 0 {
+                                                insert_cursor -= 1;
+                                                app.insert_buffer.remove(insert_cursor);
+                                            }
+                                        }
+                                        InsertAction::Delete => {
+                                            if insert_cursor < app.insert_buffer.len() {
+                                                app.insert_buffer.remove(insert_cursor);
+                                            }
+                                        }
+                                        InsertAction::CursorLeft => {
+                                            insert_cursor = insert_cursor.saturating_sub(1);
+                                        }
+                                        InsertAction::CursorRight => {
+                                            insert_cursor =
+                                                (insert_cursor + 1).min(app.insert_buffer.len());
+                                        }
+                                        InsertAction::CursorHome => {
+                                            insert_cursor = 0;
+                                        }
+                                        InsertAction::CursorEnd => {
+                                            insert_cursor = app.insert_buffer.len();
+                                        }
                                     }
-                                } else {
-                                    Action::Noop
                                 }
+                                Action::Noop
                             }
-                            CommandAction::Backspace => {
-                                app.command_line.pop();
-                                if let Some(dir) = search_dir {
-                                    Action::SearchIncremental {
-                                        pattern: app.command_line.clone(),
-                                        direction: dir,
-                                    }
-                                } else {
-                                    Action::Noop
-                                }
-                            }
-                            CommandAction::Execute(cmd) => {
-                                let kind = app.command_kind;
-                                let is_wq =
-                                    matches!(kind, CommandKind::Colon) && cmd.trim() == "wq";
-                                // Push non-empty colon commands to history,
-                                // avoiding consecutive duplicates.
-                                if matches!(kind, CommandKind::Colon)
-                                    && !cmd.trim().is_empty()
-                                    && app.command_history.last().map(|s| s.as_str())
-                                        != Some(cmd.trim())
-                                {
-                                    app.command_history.push(cmd.trim().to_string());
-                                }
-                                app.command_history_idx = None;
-                                app.command_history_scratch.clear();
-                                let parsed = submit(kind, &cmd);
-                                app.command_line.clear();
-                                if is_wq {
-                                    wq_pending = true;
-                                }
-                                // Submitting any prompt returns to normal
-                                // mode regardless of whether the action
-                                // ends up moving the cursor.
-                                app.mode = Mode::Normal;
-                                parsed
-                            }
-                            CommandAction::Cancel => {
-                                app.command_history_idx = None;
-                                app.command_history_scratch.clear();
-                                if search_dir.is_some() {
-                                    Action::CancelSearch
-                                } else {
-                                    app.command_line.clear();
+                        },
+                        Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
+                            if let Some(ref mut vs) = visual_state {
+                                let action = vs.handle_key(key, app);
+                                let exits = matches!(
+                                    action,
                                     Action::ChangeMode(Mode::Normal)
+                                        | Action::ClearRange { .. }
+                                        | Action::YankRange { .. }
+                                        | Action::ChangeRange { .. }
+                                        | Action::CaseOpRange { .. }
+                                );
+                                if exits {
+                                    let anchor = vs.anchor;
+                                    let kind = vs.kind;
+                                    app.record_last_visual(anchor, kind);
+                                    visual_state = None;
+                                    app.mode = Mode::Normal;
                                 }
+                                action
+                            } else {
+                                Action::ChangeMode(Mode::Normal)
                             }
-                            CommandAction::HistoryPrev => {
-                                if app.command_history.is_empty() {
-                                    Action::Noop
-                                } else {
-                                    let new_idx = match app.command_history_idx {
-                                        None => {
-                                            // Save current in-progress text before browsing.
-                                            app.command_history_scratch = app.command_line.clone();
-                                            app.command_history.len() - 1
+                        }
+                        Mode::Help => help_state.handle_key(key, app, grid_height),
+                        Mode::Command => {
+                            use action::{CommandKind, SearchDirection};
+                            let cmd_action = handle_command_key(key, &app.command_line);
+                            let search_dir = match app.command_kind {
+                                CommandKind::Slash => Some(SearchDirection::Forward),
+                                CommandKind::Question => Some(SearchDirection::Backward),
+                                CommandKind::Colon => None,
+                            };
+                            match cmd_action {
+                                CommandAction::InsertChar(c) => {
+                                    app.command_line.push(c);
+                                    if let Some(dir) = search_dir {
+                                        Action::SearchIncremental {
+                                            pattern: app.command_line.clone(),
+                                            direction: dir,
                                         }
-                                        Some(i) => i.saturating_sub(1),
-                                    };
-                                    app.command_history_idx = Some(new_idx);
-                                    app.command_line = app.command_history[new_idx].clone();
-                                    Action::Noop
-                                }
-                            }
-                            CommandAction::HistoryNext => {
-                                match app.command_history_idx {
-                                    None => Action::Noop,
-                                    Some(i) => {
-                                        if i + 1 < app.command_history.len() {
-                                            let new_idx = i + 1;
-                                            app.command_history_idx = Some(new_idx);
-                                            app.command_line = app.command_history[new_idx].clone();
-                                        } else {
-                                            // Past the newest entry — restore scratch.
-                                            app.command_history_idx = None;
-                                            app.command_line = app.command_history_scratch.clone();
-                                        }
+                                    } else {
                                         Action::Noop
                                     }
                                 }
+                                CommandAction::Backspace => {
+                                    app.command_line.pop();
+                                    if let Some(dir) = search_dir {
+                                        Action::SearchIncremental {
+                                            pattern: app.command_line.clone(),
+                                            direction: dir,
+                                        }
+                                    } else {
+                                        Action::Noop
+                                    }
+                                }
+                                CommandAction::Execute(cmd) => {
+                                    let kind = app.command_kind;
+                                    let is_wq =
+                                        matches!(kind, CommandKind::Colon) && cmd.trim() == "wq";
+                                    // Push non-empty colon commands to history,
+                                    // avoiding consecutive duplicates.
+                                    if matches!(kind, CommandKind::Colon)
+                                        && !cmd.trim().is_empty()
+                                        && app.command_history.last().map(|s| s.as_str())
+                                            != Some(cmd.trim())
+                                    {
+                                        app.command_history.push(cmd.trim().to_string());
+                                    }
+                                    app.command_history_idx = None;
+                                    app.command_history_scratch.clear();
+                                    let parsed = submit(kind, &cmd);
+                                    app.command_line.clear();
+                                    if is_wq {
+                                        wq_pending = true;
+                                    }
+                                    // Submitting any prompt returns to normal
+                                    // mode regardless of whether the action
+                                    // ends up moving the cursor.
+                                    app.mode = Mode::Normal;
+                                    parsed
+                                }
+                                CommandAction::Cancel => {
+                                    app.command_history_idx = None;
+                                    app.command_history_scratch.clear();
+                                    if search_dir.is_some() {
+                                        Action::CancelSearch
+                                    } else {
+                                        app.command_line.clear();
+                                        Action::ChangeMode(Mode::Normal)
+                                    }
+                                }
+                                CommandAction::HistoryPrev => {
+                                    if app.command_history.is_empty() {
+                                        Action::Noop
+                                    } else {
+                                        let new_idx = match app.command_history_idx {
+                                            None => {
+                                                // Save current in-progress text before browsing.
+                                                app.command_history_scratch =
+                                                    app.command_line.clone();
+                                                app.command_history.len() - 1
+                                            }
+                                            Some(i) => i.saturating_sub(1),
+                                        };
+                                        app.command_history_idx = Some(new_idx);
+                                        app.command_line = app.command_history[new_idx].clone();
+                                        Action::Noop
+                                    }
+                                }
+                                CommandAction::HistoryNext => {
+                                    match app.command_history_idx {
+                                        None => Action::Noop,
+                                        Some(i) => {
+                                            if i + 1 < app.command_history.len() {
+                                                let new_idx = i + 1;
+                                                app.command_history_idx = Some(new_idx);
+                                                app.command_line =
+                                                    app.command_history[new_idx].clone();
+                                            } else {
+                                                // Past the newest entry — restore scratch.
+                                                app.command_history_idx = None;
+                                                app.command_line =
+                                                    app.command_history_scratch.clone();
+                                            }
+                                            Action::Noop
+                                        }
+                                    }
+                                }
+                                CommandAction::Noop => Action::Noop,
                             }
-                            CommandAction::Noop => Action::Noop,
+                        }
+                    };
+
+                    if let Action::ChangeMode(Mode::Visual) = &action {
+                        visual_state = Some(VisualState::new(app.cursor, VisualKind::Character));
+                    }
+                    if let Action::ChangeMode(Mode::VisualLine) = &action {
+                        visual_state = Some(VisualState::new(app.cursor, VisualKind::Line));
+                    }
+                    if let Action::ChangeMode(Mode::VisualBlock) = &action {
+                        visual_state = Some(VisualState::new(app.cursor, VisualKind::Block));
+                    }
+                    if let Action::ChangeMode(Mode::Insert) = &action {
+                        insert_cursor = app
+                            .sheet
+                            .get_cell(app.cursor)
+                            .map(|c| c.raw.len())
+                            .unwrap_or(0);
+                    }
+                    if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
+                        insert_cursor = 0;
+                    }
+                    if matches!(&action, Action::ReselectLastVisual) {
+                        if let Some(lv) = app.last_visual {
+                            visual_state = Some(VisualState::new(lv.anchor, lv.kind));
+                            app.cursor = lv.cursor;
+                            app.mode = match lv.kind {
+                                VisualKind::Character => Mode::Visual,
+                                VisualKind::Line => Mode::VisualLine,
+                                VisualKind::Block => Mode::VisualBlock,
+                            };
+                            app.viewport.ensure_visible(app.cursor);
                         }
                     }
-                };
 
-                if let Action::ChangeMode(Mode::Visual) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Character));
-                }
-                if let Action::ChangeMode(Mode::VisualLine) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Line));
-                }
-                if let Action::ChangeMode(Mode::VisualBlock) = &action {
-                    visual_state = Some(VisualState::new(app.cursor, VisualKind::Block));
-                }
-                if let Action::ChangeMode(Mode::Insert) = &action {
-                    insert_cursor = app
-                        .sheet
-                        .get_cell(app.cursor)
-                        .map(|c| c.raw.len())
-                        .unwrap_or(0);
-                }
-                if matches!(&action, Action::ChangeCell(_) | Action::ChangeRange { .. }) {
-                    insert_cursor = 0;
-                }
-                if matches!(&action, Action::ReselectLastVisual) {
-                    if let Some(lv) = app.last_visual {
-                        visual_state = Some(VisualState::new(lv.anchor, lv.kind));
-                        app.cursor = lv.cursor;
-                        app.mode = match lv.kind {
-                            VisualKind::Character => Mode::Visual,
-                            VisualKind::Line => Mode::VisualLine,
-                            VisualKind::Block => Mode::VisualBlock,
-                        };
-                        app.viewport.ensure_visible(app.cursor);
+                    app.process_action(action);
+
+                    if wq_pending && !app.dirty {
+                        app.should_quit = true;
+                        wq_pending = false;
                     }
                 }
-
-                app.process_action(action);
-
-                if wq_pending && !app.dirty {
-                    app.should_quit = true;
-                    wq_pending = false;
+                Event::Mouse(me) => {
+                    if !app.mouse_enabled {
+                        continue;
+                    }
+                    app.status_message = None;
+                    let layout = app.last_grid_layout.clone();
+                    let action =
+                        mode::mouse::handle_mouse_event(me, &mut mouse_state, app, layout.as_ref());
+                    app.process_action(action);
                 }
+                _ => {}
             }
         }
 
