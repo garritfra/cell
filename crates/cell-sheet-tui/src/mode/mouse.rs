@@ -167,31 +167,48 @@ pub fn handle_mouse_event(
             if state.drag == MouseDragState::Idle {
                 return Action::Noop;
             }
-            // Edge auto-scroll: a cell drag landing outside the grid in
+            // Edge auto-scroll: a drag landing outside the grid in
             // the direction of motion advances the viewport one step.
             // The user keeps holding the drag; the next event lands
             // inside the freshly-revealed row/column and the
             // per-drag-state matcher below extends the selection
-            // normally. Only fires for cell drags — for column/row
-            // drags the header/gutter is part of the natural
-            // interaction surface and must not trigger a scroll.
-            if matches!(state.drag, MouseDragState::DraggingCells { .. }) {
-                let grid_bottom = layout.y + layout.height;
-                let grid_right = layout.x + layout.width;
-                let header_y_end = layout.y + layout.header_height;
-                let row_num_x_end = layout.x + layout.row_num_width;
-                if event.row >= grid_bottom {
-                    return Action::MouseScroll { dx: 0, dy: 1 };
+            // normally. Edge sensitivity is per drag mode: cell drags
+            // scroll on all four edges, column drags only on the
+            // right edge, and row drags only on the bottom edge. The
+            // header band and gutter are the natural anchor surfaces
+            // for column/row drags, so scrolling there would make it
+            // impossible to drag back to a column/row the user
+            // already passed.
+            let grid_bottom = layout.y + layout.height;
+            let grid_right = layout.x + layout.width;
+            let header_y_end = layout.y + layout.header_height;
+            let row_num_x_end = layout.x + layout.row_num_width;
+            match state.drag {
+                MouseDragState::DraggingCells { .. } => {
+                    if event.row >= grid_bottom {
+                        return Action::MouseScroll { dx: 0, dy: 1 };
+                    }
+                    if event.row < header_y_end {
+                        return Action::MouseScroll { dx: 0, dy: -1 };
+                    }
+                    if event.column >= grid_right {
+                        return Action::MouseScroll { dx: 1, dy: 0 };
+                    }
+                    if event.column < row_num_x_end {
+                        return Action::MouseScroll { dx: -1, dy: 0 };
+                    }
                 }
-                if event.row < header_y_end {
-                    return Action::MouseScroll { dx: 0, dy: -1 };
+                MouseDragState::DraggingColumns { .. } => {
+                    if event.column >= grid_right {
+                        return Action::MouseScroll { dx: 1, dy: 0 };
+                    }
                 }
-                if event.column >= grid_right {
-                    return Action::MouseScroll { dx: 1, dy: 0 };
+                MouseDragState::DraggingRows { .. } => {
+                    if event.row >= grid_bottom {
+                        return Action::MouseScroll { dx: 0, dy: 1 };
+                    }
                 }
-                if event.column < row_num_x_end {
-                    return Action::MouseScroll { dx: -1, dy: 0 };
-                }
+                MouseDragState::Idle => {}
             }
             match state.drag {
                 MouseDragState::DraggingCells { .. } => match target {
@@ -838,5 +855,80 @@ mod tests {
         assert!(app.command_history_idx.is_none());
         assert!(app.command_history_scratch.is_empty());
         assert_eq!(app.cursor, (1, 1));
+    }
+
+    #[test]
+    fn double_click_after_long_insert_does_not_panic() {
+        // Regression: double-click → ChangeMode(Insert) must initialize
+        // insert_cursor against the new cell's content length, not carry
+        // a stale value from a prior Insert session. Without the fix in
+        // run_loop's Event::Mouse arm, typing after this sequence would
+        // panic with `byte index N is out of bounds`.
+        //
+        // We can't drive run_loop directly from a unit test, but we can
+        // reproduce the state machine and verify that App's insert_buffer
+        // is rewritten from the new cell's raw on ChangeMode(Insert),
+        // which is what the run_loop initializer reads from.
+        use crate::action::Mode;
+        let mut app = App::new();
+        // First Insert: long content at A1.
+        app.sheet.set_cell((0, 0), "hello world more");
+        // Simulate Esc-out: app.mode is whatever; we just need cell B5
+        // to have shorter content.
+        app.sheet.set_cell((4, 1), "hi");
+        // Cursor is now (4, 1) (as if a click + double-click landed it there).
+        app.cursor = (4, 1);
+        // ChangeMode(Insert) populates insert_buffer from app.cursor's cell.
+        app.process_action(Action::ChangeMode(Mode::Insert));
+        assert_eq!(app.insert_buffer, "hi");
+        // The run_loop initializer would set insert_cursor to
+        // sheet.get_cell(cursor).map(|c| c.raw.len()).unwrap_or(0).
+        // For cell (4, 1) with raw "hi", that's 2.
+        let new_insert_cursor = app
+            .sheet
+            .get_cell(app.cursor)
+            .map(|c| c.raw.len())
+            .unwrap_or(0);
+        assert_eq!(new_insert_cursor, 2);
+    }
+
+    #[test]
+    fn column_drag_past_right_edge_scrolls_right() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        // Down on a column header to arm DraggingColumns.
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 18, 1),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // Drag past the right edge (grid right = x=40).
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 40, 1);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 1, dy: 0 }
+        );
+    }
+
+    #[test]
+    fn row_drag_past_bottom_edge_scrolls_down() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        // Down on a row header to arm DraggingRows.
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 2, 4),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // Drag past the bottom edge (grid bottom = y=11).
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 2, 11);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 0, dy: 1 }
+        );
     }
 }

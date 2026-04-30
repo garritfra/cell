@@ -623,6 +623,15 @@ fn run_loop(
                         }
                         _ => {}
                     }
+
+                    if let Action::ChangeMode(Mode::Insert) = &action {
+                        insert_cursor = app
+                            .sheet
+                            .get_cell(app.cursor)
+                            .map(|c| c.raw.len())
+                            .unwrap_or(0);
+                    }
+
                     app.process_action(action);
                 }
                 _ => {}
