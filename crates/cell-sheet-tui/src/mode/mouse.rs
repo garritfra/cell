@@ -95,9 +95,6 @@ pub enum MouseDragState {
     DraggingColumns {
         anchor_col: usize,
     },
-    // `DraggingRows` is armed by header-drag logic in Task 8. Keep the
-    // variant here so the state machine is complete.
-    #[allow(dead_code)]
     DraggingRows {
         anchor_row: usize,
     },
@@ -152,6 +149,11 @@ pub fn handle_mouse_event(
                 state.last_click = None;
                 Action::MouseSelectColumn(c)
             }
+            MouseTarget::RowHeader(r) => {
+                state.drag = MouseDragState::DraggingRows { anchor_row: r };
+                state.last_click = None;
+                Action::MouseSelectRow(r)
+            }
             _ => Action::Noop,
         },
         MouseEventKind::Drag(MouseButton::Left) => match state.drag {
@@ -163,6 +165,10 @@ pub fn handle_mouse_event(
                 MouseTarget::ColHeader(c) | MouseTarget::Cell((_, c)) => {
                     Action::MouseSelectColumn(c)
                 }
+                _ => Action::Noop,
+            },
+            MouseDragState::DraggingRows { .. } => match target {
+                MouseTarget::RowHeader(r) | MouseTarget::Cell((r, _)) => Action::MouseSelectRow(r),
                 _ => Action::Noop,
             },
             _ => Action::Noop,
@@ -432,6 +438,58 @@ mod tests {
         assert_eq!(
             handle_mouse_event(drag, &mut state, &app, Some(&layout)),
             Action::MouseSelectColumn(2)
+        );
+    }
+
+    #[test]
+    fn down_on_row_header_emits_select_row() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        // x=2 is the gutter, y=4 → row_offset_y = 2 → row 2.
+        let event = synth(MouseEventKind::Down(MouseButton::Left), 2, 4);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseSelectRow(2)
+        );
+        assert_eq!(state.drag, MouseDragState::DraggingRows { anchor_row: 2 });
+    }
+
+    #[test]
+    fn drag_in_row_mode_extends_to_other_row() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 2, 4),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // x=8, y=6 → Cell((4, 0)). Drag from row 2 to row 4.
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 8, 6);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseSelectRow(4)
+        );
+    }
+
+    #[test]
+    fn drag_in_row_mode_back_to_gutter_extends() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 2, 4),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // x=2 is gutter, y=6 → row 4 → RowHeader(4).
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 2, 6);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseSelectRow(4)
         );
     }
 }

@@ -566,6 +566,17 @@ fn run_loop(
                                 }
                             }
                         }
+                        Action::MouseSelectRow(_) => {
+                            if app.mode != Mode::VisualBlock {
+                                if let mode::mouse::MouseDragState::DraggingRows { anchor_row } =
+                                    mouse_state.drag
+                                {
+                                    visual_state =
+                                        Some(VisualState::new((anchor_row, 0), VisualKind::Block));
+                                    app.mode = Mode::VisualBlock;
+                                }
+                            }
+                        }
                         _ => {}
                     }
                     app.process_action(action);

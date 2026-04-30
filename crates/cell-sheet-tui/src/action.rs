@@ -184,6 +184,9 @@ pub enum Action {
     /// VisualBlock setup happens in `run_loop` parallel to the existing
     /// keyboard `v` flow.
     MouseSelectColumn(usize),
+    /// Anchor (or extend) a whole-row selection. The corresponding
+    /// VisualBlock setup happens in `run_loop`.
+    MouseSelectRow(usize),
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,

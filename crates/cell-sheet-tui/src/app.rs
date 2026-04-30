@@ -895,6 +895,11 @@ impl App {
                 self.cursor = (last_row, col);
                 self.viewport.ensure_visible(self.cursor);
             }
+            Action::MouseSelectRow(row) => {
+                let last_col = self.sheet.col_count.saturating_sub(1);
+                self.cursor = (row, last_col);
+                self.viewport.ensure_visible(self.cursor);
+            }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }
