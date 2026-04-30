@@ -891,13 +891,18 @@ impl App {
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::MouseSelectColumn(col) => {
-                let last_row = self.sheet.row_count.saturating_sub(1);
-                self.cursor = (last_row, col);
+                // Cursor stays at the top of the clicked column so the
+                // highlighted cell is where the user pointed; the visual
+                // anchor at (last_row, _) makes the selection rectangle
+                // cover the full column.
+                self.cursor = (0, col);
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::MouseSelectRow(row) => {
-                let last_col = self.sheet.col_count.saturating_sub(1);
-                self.cursor = (row, last_col);
+                // Cursor stays at the leftmost cell of the clicked row;
+                // the visual anchor at (_, last_col) makes the selection
+                // rectangle cover the full row.
+                self.cursor = (row, 0);
                 self.viewport.ensure_visible(self.cursor);
             }
             Action::MouseScroll { dx, dy } => {

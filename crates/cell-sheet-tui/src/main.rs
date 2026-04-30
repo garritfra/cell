@@ -604,8 +604,16 @@ fn run_loop(
                                 if let mode::mouse::MouseDragState::DraggingColumns { anchor_col } =
                                     mouse_state.drag
                                 {
-                                    visual_state =
-                                        Some(VisualState::new((0, anchor_col), VisualKind::Block));
+                                    // Anchor at the bottom of the column so
+                                    // the selection rectangle covers the
+                                    // full column while the cursor (set by
+                                    // process_action to row 0) stays at the
+                                    // top — i.e. where the user clicked.
+                                    let last_row = app.sheet.row_count.saturating_sub(1);
+                                    visual_state = Some(VisualState::new(
+                                        (last_row, anchor_col),
+                                        VisualKind::Block,
+                                    ));
                                     app.mode = Mode::VisualBlock;
                                 }
                             }
@@ -615,8 +623,13 @@ fn run_loop(
                                 if let mode::mouse::MouseDragState::DraggingRows { anchor_row } =
                                     mouse_state.drag
                                 {
-                                    visual_state =
-                                        Some(VisualState::new((anchor_row, 0), VisualKind::Block));
+                                    // Mirror image: anchor at the rightmost
+                                    // column, cursor at column 0.
+                                    let last_col = app.sheet.col_count.saturating_sub(1);
+                                    visual_state = Some(VisualState::new(
+                                        (anchor_row, last_col),
+                                        VisualKind::Block,
+                                    ));
                                     app.mode = Mode::VisualBlock;
                                 }
                             }

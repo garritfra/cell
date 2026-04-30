@@ -931,4 +931,30 @@ mod tests {
             Action::MouseScroll { dx: 0, dy: 1 }
         );
     }
+
+    #[test]
+    fn select_column_keeps_cursor_at_top_not_bottom() {
+        let mut app = App::new();
+        // Populate enough rows that "last_row" is non-trivially != 0.
+        for r in 0..5 {
+            app.sheet.set_cell((r, 2), "x");
+        }
+        app.process_action(Action::MouseSelectColumn(2));
+        // Cursor must be at the TOP of the column (row 0), not the
+        // bottom — otherwise the highlighted cell sits at the far end
+        // of the selection instead of where the user clicked.
+        assert_eq!(app.cursor, (0, 2));
+    }
+
+    #[test]
+    fn select_row_keeps_cursor_at_left_not_right() {
+        let mut app = App::new();
+        for c in 0..5 {
+            app.sheet.set_cell((3, c), "x");
+        }
+        app.process_action(Action::MouseSelectRow(3));
+        // Cursor must be at the LEFTMOST cell of the row (col 0), not
+        // the right edge.
+        assert_eq!(app.cursor, (3, 0));
+    }
 }
