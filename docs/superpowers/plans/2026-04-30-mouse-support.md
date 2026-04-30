@@ -177,8 +177,8 @@ mod tests {
 
     #[test]
     fn click_in_row_header() {
-        // x=2 is in the gutter, y=4 is row 3 (with row_offset=0).
-        assert_eq!(hit_test(&fixture(), 2, 4), MouseTarget::RowHeader(3));
+        // x=2 is in the gutter, y=4 → row_offset_y = 4 - 2 = 2.
+        assert_eq!(hit_test(&fixture(), 2, 4), MouseTarget::RowHeader(2));
     }
 
     #[test]
@@ -207,15 +207,22 @@ mod tests {
     #[test]
     fn click_uses_per_column_widths() {
         // Column 1 has width 12 (17..29). x=27 must hit col 1, not col 2.
-        assert_eq!(hit_test(&fixture(), 27, 5), MouseTarget::Cell((4, 1)));
+        // y=5 → row_offset_y = 5 - 2 = 3.
+        assert_eq!(hit_test(&fixture(), 27, 5), MouseTarget::Cell((3, 1)));
     }
 
     #[test]
     fn click_with_nonzero_row_offset() {
         let mut layout = fixture();
         layout.row_offset = 100;
-        // y=2 → row_offset_y=1 → row 101
-        assert_eq!(hit_test(&layout, 8, 2), MouseTarget::Cell((101, 0)));
+        // y=2 → row_offset_y = 2 - 2 = 0 → row 100
+        assert_eq!(hit_test(&layout, 8, 2), MouseTarget::Cell((100, 0)));
+    }
+
+    #[test]
+    fn click_in_inter_column_gap_is_outside() {
+        // x=16 sits between col 0 (6..16) and col 1 (17..29).
+        assert_eq!(hit_test(&fixture(), 16, 3), MouseTarget::Outside);
     }
 }
 ```
@@ -1260,12 +1267,13 @@ fn down_on_row_header_emits_select_row() {
     let app = App::new();
     let mut state = MouseState::new();
     let layout = fixture();
+    // x=2 is the gutter, y=4 → row_offset_y = 2 → row 2.
     let event = synth(MouseEventKind::Down(MouseButton::Left), 2, 4);
     assert_eq!(
         handle_mouse_event(event, &mut state, &app, Some(&layout)),
-        Action::MouseSelectRow(3)
+        Action::MouseSelectRow(2)
     );
-    assert_eq!(state.drag, MouseDragState::DraggingRows { anchor_row: 3 });
+    assert_eq!(state.drag, MouseDragState::DraggingRows { anchor_row: 2 });
 }
 ```
 
