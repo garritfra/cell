@@ -81,16 +81,14 @@ pub fn parse_command(input: &str) -> Action {
         } else {
             Action::ShowHelp(Some(topic.to_string()))
         }
-    } else if let Some(rest) = input.strip_prefix("set mouse") {
-        let arg = rest.trim();
-        match arg {
+    } else if input == "set mouse" {
+        Action::SetStatus("Usage: :set mouse on|off|toggle".into())
+    } else if let Some(rest) = input.strip_prefix("set mouse ") {
+        match rest.trim() {
             "on" => Action::SetMouse(true),
             "off" => Action::SetMouse(false),
-            // The toggle case is rewritten in run_loop, where we have
-            // access to the live mouse_enabled flag. Returning
-            // SetMouse(true) here is a placeholder; run_loop replaces it.
-            "toggle" => Action::SetMouse(true),
-            _ => Action::SetStatus("usage: :set mouse on|off|toggle".into()),
+            "toggle" => Action::ToggleMouse,
+            _ => Action::SetStatus("Usage: :set mouse on|off|toggle".into()),
         }
     } else {
         Action::Noop
@@ -316,16 +314,27 @@ mod tests {
 
     #[test]
     fn parse_set_mouse_bogus_returns_status_error() {
-        assert!(matches!(
-            parse_command("set mouse bogus"),
-            Action::SetStatus(_)
-        ));
+        let Action::SetStatus(msg) = parse_command("set mouse bogus") else {
+            panic!("expected SetStatus");
+        };
+        assert!(msg.contains("set mouse"), "got: {msg}");
     }
 
     #[test]
     fn parse_set_mouse_toggle() {
-        // Parser produces SetMouse(true); run_loop rewrites toggle vs current state.
-        assert_eq!(parse_command("set mouse toggle"), Action::SetMouse(true));
+        assert_eq!(parse_command("set mouse toggle"), Action::ToggleMouse);
+    }
+
+    #[test]
+    fn parse_set_mousepad_is_not_set_mouse() {
+        // Ensure `set mouse` doesn't swallow longer commands.
+        assert!(matches!(parse_command("set mousepad"), Action::Noop));
+    }
+
+    #[test]
+    fn parse_set_mouse_extra_whitespace() {
+        assert_eq!(parse_command("set mouse   on"), Action::SetMouse(true));
+        assert_eq!(parse_command("set mouse  toggle"), Action::ToggleMouse);
     }
 
     fn key(code: KeyCode) -> KeyEvent {

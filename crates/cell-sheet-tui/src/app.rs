@@ -874,6 +874,9 @@ impl App {
             Action::SetMouse(b) => {
                 self.mouse_enabled = b;
             }
+            Action::ToggleMouse => {
+                self.mouse_enabled = !self.mouse_enabled;
+            }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }
@@ -2525,12 +2528,22 @@ mod tests {
     }
 
     #[test]
-    fn set_mouse_flag_starts_off_and_toggles() {
+    fn set_mouse_action_writes_flag() {
         let mut app = App::new();
         assert!(!app.mouse_enabled);
         app.process_action(Action::SetMouse(true));
         assert!(app.mouse_enabled);
         app.process_action(Action::SetMouse(false));
+        assert!(!app.mouse_enabled);
+    }
+
+    #[test]
+    fn toggle_mouse_flips_flag_from_either_state() {
+        let mut app = App::new();
+        assert!(!app.mouse_enabled);
+        app.process_action(Action::ToggleMouse);
+        assert!(app.mouse_enabled);
+        app.process_action(Action::ToggleMouse);
         assert!(!app.mouse_enabled);
     }
 

@@ -170,6 +170,10 @@ pub enum Action {
     /// Toggle the mouse-enabled flag. The actual `Enable/DisableMouseCapture`
     /// syscall is issued by `run_loop` after observing the flag change.
     SetMouse(bool),
+    /// Flip `App.mouse_enabled` to its opposite. Distinct from
+    /// `SetMouse(b)` so the parser doesn't need to know the current
+    /// state.
+    ToggleMouse,
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,

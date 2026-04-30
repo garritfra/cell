@@ -419,14 +419,7 @@ fn run_loop(
                                 }
                                 app.command_history_idx = None;
                                 app.command_history_scratch.clear();
-                                let is_toggle = matches!(kind, CommandKind::Colon)
-                                    && cmd.trim() == "set mouse toggle";
                                 let parsed = submit(kind, &cmd);
-                                let parsed = if is_toggle {
-                                    Action::SetMouse(!app.mouse_enabled)
-                                } else {
-                                    parsed
-                                };
                                 app.command_line.clear();
                                 if is_wq {
                                     wq_pending = true;
