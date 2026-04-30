@@ -882,6 +882,10 @@ impl App {
             Action::ToggleMouse => {
                 self.mouse_enabled = !self.mouse_enabled;
             }
+            Action::MouseClickCell(pos) => {
+                self.cursor = pos;
+                self.viewport.ensure_visible(self.cursor);
+            }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }
@@ -2550,6 +2554,15 @@ mod tests {
         assert!(app.mouse_enabled);
         app.process_action(Action::ToggleMouse);
         assert!(!app.mouse_enabled);
+    }
+
+    #[test]
+    fn mouse_click_cell_moves_cursor_and_ensures_visible() {
+        let mut app = App::new();
+        app.process_action(Action::MouseClickCell((50, 5)));
+        assert_eq!(app.cursor, (50, 5));
+        // Viewport must scroll to keep the cursor in view.
+        assert!(app.viewport.row_offset > 0);
     }
 
     #[test]

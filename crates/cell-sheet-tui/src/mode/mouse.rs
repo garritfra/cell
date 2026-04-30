@@ -2,9 +2,6 @@ use cell_sheet_core::model::CellPos;
 
 /// Logical region a screen coordinate maps to. Built by [`hit_test`] from
 /// a [`GridLayout`] published by the render layer.
-// Reachable from tests, but not yet from the bin entry point (the stub
-// `handle_mouse_event` doesn't call `hit_test`). Tasks 5+ wire it up.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseTarget {
     Cell(CellPos),
@@ -34,9 +31,6 @@ pub struct GridLayout {
 }
 
 /// Map a terminal coordinate to a [`MouseTarget`]. Pure.
-// Reachable from tests, but the bin's `handle_mouse_event` is still a stub.
-// Tasks 5+ call this from the handler body.
-#[allow(dead_code)]
 pub fn hit_test(layout: &GridLayout, x: u16, y: u16) -> MouseTarget {
     let in_x = x >= layout.x && x < layout.x + layout.width;
     let in_y = y >= layout.y && y < layout.y + layout.height;
@@ -77,22 +71,20 @@ pub fn hit_test(layout: &GridLayout, x: u16, y: u16) -> MouseTarget {
 
 use crate::action::Action;
 use crate::app::App;
-use crossterm::event::MouseEvent;
+use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use std::time::Instant;
 
-// All of these are populated by the stub handler's successors (Tasks 5+).
-// Until then they're constructed only in tests.
+// `DOUBLE_CLICK_MS` is consumed by Task 12's double-click logic; until then
+// it's referenced only by tests.
 #[allow(dead_code)]
 pub const DOUBLE_CLICK_MS: u64 = 400;
 
-#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct MouseState {
     pub drag: MouseDragState,
     pub last_click: Option<LastClick>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum MouseDragState {
     #[default]
@@ -100,14 +92,20 @@ pub enum MouseDragState {
     DraggingCells {
         anchor: CellPos,
     },
+    // `DraggingColumns` / `DraggingRows` are armed by header-drag logic in
+    // Tasks 7+. Keep the variants here so the state machine is complete.
+    #[allow(dead_code)]
     DraggingColumns {
         anchor_col: usize,
     },
+    #[allow(dead_code)]
     DraggingRows {
         anchor_row: usize,
     },
 }
 
+// Fields are only read by Task 12's double-click logic; for now we just
+// construct the struct on left-down.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct LastClick {
@@ -126,12 +124,38 @@ impl MouseState {
 /// `app` and `layout` are read-only; the handler does not own selection
 /// or cursor mutations — those live in `App::process_action`.
 pub fn handle_mouse_event(
-    _event: MouseEvent,
-    _state: &mut MouseState,
+    event: MouseEvent,
+    state: &mut MouseState,
     _app: &App,
-    _layout: Option<&GridLayout>,
+    layout: Option<&GridLayout>,
 ) -> Action {
-    Action::Noop
+    if event.modifiers.contains(KeyModifiers::SHIFT) {
+        return Action::Noop;
+    }
+    let layout = match layout {
+        Some(l) => l,
+        None => return Action::Noop,
+    };
+    let target = hit_test(layout, event.column, event.row);
+
+    match event.kind {
+        MouseEventKind::Down(MouseButton::Left) => match target {
+            MouseTarget::Cell(pos) => {
+                state.drag = MouseDragState::DraggingCells { anchor: pos };
+                state.last_click = Some(LastClick {
+                    at: Instant::now(),
+                    pos,
+                });
+                Action::MouseClickCell(pos)
+            }
+            _ => Action::Noop,
+        },
+        MouseEventKind::Up(MouseButton::Left) => {
+            state.drag = MouseDragState::Idle;
+            Action::Noop
+        }
+        _ => Action::Noop,
+    }
 }
 
 #[cfg(test)]
@@ -231,21 +255,63 @@ mod tests {
     }
 
     #[test]
-    fn stub_handler_returns_noop() {
+    fn fresh_mouse_state_is_idle() {
+        let s = MouseState::new();
+        assert_eq!(s.drag, MouseDragState::Idle);
+        assert!(s.last_click.is_none());
+    }
+
+    #[test]
+    fn down_left_on_cell_in_normal_emits_click() {
         let app = App::new();
         let mut state = MouseState::new();
         let layout = fixture();
         let event = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
         assert_eq!(
             handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseClickCell((1, 0))
+        );
+        assert_eq!(state.drag, MouseDragState::DraggingCells { anchor: (1, 0) });
+    }
+
+    #[test]
+    fn shift_click_is_noop_for_terminal_passthrough() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 8,
+            row: 3,
+            modifiers: KeyModifiers::SHIFT,
+        };
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::Noop
+        );
+        // Shift-click must NOT arm a drag.
+        assert_eq!(state.drag, MouseDragState::Idle);
+    }
+
+    #[test]
+    fn down_left_with_no_layout_is_noop() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let event = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, None),
             Action::Noop
         );
     }
 
     #[test]
-    fn fresh_mouse_state_is_idle() {
-        let s = MouseState::new();
-        assert_eq!(s.drag, MouseDragState::Idle);
-        assert!(s.last_click.is_none());
+    fn up_left_clears_drag_state() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        state.drag = MouseDragState::DraggingCells { anchor: (1, 0) };
+        let layout = fixture();
+        let event = synth(MouseEventKind::Up(MouseButton::Left), 8, 3);
+        let _ = handle_mouse_event(event, &mut state, &app, Some(&layout));
+        assert_eq!(state.drag, MouseDragState::Idle);
     }
 }

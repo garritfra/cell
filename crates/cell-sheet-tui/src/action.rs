@@ -174,6 +174,7 @@ pub enum Action {
     /// `SetMouse(b)` so the parser doesn't need to know the current
     /// state.
     ToggleMouse,
+    MouseClickCell(CellPos),
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,
