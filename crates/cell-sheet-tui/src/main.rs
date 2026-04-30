@@ -565,12 +565,23 @@ fn run_loop(
                                 app.mode = Mode::Normal;
                             }
                             Mode::Command => {
-                                app.command_line.clear();
+                                use action::CommandKind;
                                 app.command_history_idx = None;
                                 app.command_history_scratch.clear();
-                                app.mode = Mode::Normal;
+                                if matches!(
+                                    app.command_kind,
+                                    CommandKind::Slash | CommandKind::Question
+                                ) {
+                                    app.process_action(Action::CancelSearch);
+                                } else {
+                                    app.command_line.clear();
+                                    app.mode = Mode::Normal;
+                                }
                             }
                             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
+                                if let Some(vs) = &visual_state {
+                                    app.record_last_visual(vs.anchor, vs.kind);
+                                }
                                 visual_state = None;
                                 app.mode = Mode::Normal;
                             }

@@ -712,4 +712,58 @@ mod tests {
             "buffer should have been committed"
         );
     }
+
+    #[test]
+    fn click_in_visual_records_last_visual_for_gv() {
+        // Simulate Task 11's Visual-exit branch: snapshot last_visual
+        // BEFORE clearing visual_state, so a later `gv` can re-enter.
+        use crate::action::Mode;
+        use crate::mode::visual::{VisualKind, VisualState};
+
+        let mut app = App::new();
+        app.cursor = (4, 6);
+        app.mode = Mode::Visual;
+        let vs = VisualState::new((2, 3), VisualKind::Character);
+
+        // The exact two lines the run_loop performs on a click in Visual:
+        app.record_last_visual(vs.anchor, vs.kind);
+        app.mode = Mode::Normal;
+        // ...and then the click action is dispatched:
+        app.process_action(Action::MouseClickCell((9, 9)));
+
+        let lv = app.last_visual.expect("last_visual must be recorded");
+        assert_eq!(lv.anchor, (2, 3));
+        // cursor snapshot must capture the pre-click position, not the
+        // post-click position.
+        assert_eq!(lv.cursor, (4, 6));
+        assert_eq!(lv.kind, VisualKind::Character);
+        assert_eq!(app.cursor, (9, 9));
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn click_in_command_clears_prompt_and_returns_to_normal() {
+        // Simulate Task 11's Command-cancel branch for the colon prompt.
+        use crate::action::{CommandKind, Mode};
+
+        let mut app = App::new();
+        app.mode = Mode::Command;
+        app.command_kind = CommandKind::Colon;
+        app.command_line = "se".into();
+        app.command_history_idx = Some(0);
+        app.command_history_scratch = "abc".into();
+
+        // The mouse-cancel branch (colon path):
+        app.command_history_idx = None;
+        app.command_history_scratch.clear();
+        app.command_line.clear();
+        app.mode = Mode::Normal;
+        app.process_action(Action::MouseClickCell((1, 1)));
+
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(app.command_line.is_empty());
+        assert!(app.command_history_idx.is_none());
+        assert!(app.command_history_scratch.is_empty());
+        assert_eq!(app.cursor, (1, 1));
+    }
 }
