@@ -64,7 +64,6 @@ impl<'a> Widget for Grid<'a> {
             row_num_width: ROW_NUM_WIDTH,
             header_height: 1,
             row_offset: self.viewport.row_offset,
-            col_offset: self.viewport.col_offset,
             visible_cols: visible_cols.clone(),
         });
 

@@ -29,12 +29,6 @@ pub struct GridLayout {
     pub header_height: u16,
     /// `viewport.row_offset` at render time.
     pub row_offset: usize,
-    /// `viewport.col_offset` at render time. Captured for completeness;
-    /// `hit_test` resolves columns via `visible_cols` so this isn't read
-    /// yet. Will be consumed in Task 4 when the event loop interprets
-    /// scroll wheel events relative to the viewport origin.
-    #[allow(dead_code)]
-    pub col_offset: usize,
     /// Visible columns in left-to-right order: `(col_index, screen_x, width)`.
     pub visible_cols: Vec<(usize, u16, u16)>,
 }
@@ -98,7 +92,6 @@ mod tests {
             row_num_width: 5,
             header_height: 1,
             row_offset: 0,
-            col_offset: 0,
             visible_cols: vec![(0, 6, 10), (1, 17, 12), (2, 30, 8)],
         }
     }
