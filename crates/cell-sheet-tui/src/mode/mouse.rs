@@ -158,23 +158,56 @@ pub fn handle_mouse_event(
             }
             _ => Action::Noop,
         },
-        MouseEventKind::Drag(MouseButton::Left) => match state.drag {
-            MouseDragState::DraggingCells { .. } => match target {
-                MouseTarget::Cell(pos) => Action::MouseDragTo(pos),
-                _ => Action::Noop,
-            },
-            MouseDragState::DraggingColumns { .. } => match target {
-                MouseTarget::ColHeader(c) | MouseTarget::Cell((_, c)) => {
-                    Action::MouseSelectColumn(c)
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if state.drag == MouseDragState::Idle {
+                return Action::Noop;
+            }
+            // Edge auto-scroll: a cell drag landing outside the grid in
+            // the direction of motion advances the viewport one step.
+            // The user keeps holding the drag; the next event lands
+            // inside the freshly-revealed row/column and the
+            // per-drag-state matcher below extends the selection
+            // normally. Only fires for cell drags — for column/row
+            // drags the header/gutter is part of the natural
+            // interaction surface and must not trigger a scroll.
+            if matches!(state.drag, MouseDragState::DraggingCells { .. }) {
+                let grid_bottom = layout.y + layout.height;
+                let grid_right = layout.x + layout.width;
+                let header_y_end = layout.y + layout.header_height;
+                let row_num_x_end = layout.x + layout.row_num_width;
+                if event.row >= grid_bottom {
+                    return Action::MouseScroll { dx: 0, dy: 1 };
                 }
-                _ => Action::Noop,
-            },
-            MouseDragState::DraggingRows { .. } => match target {
-                MouseTarget::RowHeader(r) | MouseTarget::Cell((r, _)) => Action::MouseSelectRow(r),
-                _ => Action::Noop,
-            },
-            _ => Action::Noop,
-        },
+                if event.row < header_y_end {
+                    return Action::MouseScroll { dx: 0, dy: -1 };
+                }
+                if event.column >= grid_right {
+                    return Action::MouseScroll { dx: 1, dy: 0 };
+                }
+                if event.column < row_num_x_end {
+                    return Action::MouseScroll { dx: -1, dy: 0 };
+                }
+            }
+            match state.drag {
+                MouseDragState::DraggingCells { .. } => match target {
+                    MouseTarget::Cell(pos) => Action::MouseDragTo(pos),
+                    _ => Action::Noop,
+                },
+                MouseDragState::DraggingColumns { .. } => match target {
+                    MouseTarget::ColHeader(c) | MouseTarget::Cell((_, c)) => {
+                        Action::MouseSelectColumn(c)
+                    }
+                    _ => Action::Noop,
+                },
+                MouseDragState::DraggingRows { .. } => match target {
+                    MouseTarget::RowHeader(r) | MouseTarget::Cell((r, _)) => {
+                        Action::MouseSelectRow(r)
+                    }
+                    _ => Action::Noop,
+                },
+                MouseDragState::Idle => Action::Noop,
+            }
+        }
         MouseEventKind::Up(MouseButton::Left) => {
             state.drag = MouseDragState::Idle;
             Action::Noop
@@ -383,16 +416,18 @@ mod tests {
     }
 
     #[test]
-    fn drag_outside_grid_is_noop() {
+    fn drag_into_formula_bar_scrolls_up() {
         let app = App::new();
         let mut state = MouseState::new();
         let layout = fixture();
         let down = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
         handle_mouse_event(down, &mut state, &app, Some(&layout));
+        // y=0 is above the grid (in the formula bar region), which the
+        // edge auto-scroll logic treats as "past the top".
         let drag = synth(MouseEventKind::Drag(MouseButton::Left), 8, 0);
         assert_eq!(
             handle_mouse_event(drag, &mut state, &app, Some(&layout)),
-            Action::Noop
+            Action::MouseScroll { dx: 0, dy: -1 }
         );
     }
 
@@ -574,5 +609,83 @@ mod tests {
         // viewport starts at row_offset=0; scrolling up should saturate.
         app.process_action(Action::MouseScroll { dx: 0, dy: -10 });
         assert_eq!(app.viewport.row_offset, 0);
+    }
+
+    #[test]
+    fn drag_past_bottom_emits_scroll_down() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        // Arm DraggingCells first.
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // Layout: y=1, height=10 → grid_bottom = 11. y=11 is past the bottom.
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 8, 11);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 0, dy: 1 }
+        );
+    }
+
+    #[test]
+    fn drag_past_top_emits_scroll_up() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // Layout: y=1, header_height=1 → header_y_end = 2. y=1 is in header
+        // (above the data rows), which counts as "past the top" for drag purposes.
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 8, 1);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 0, dy: -1 }
+        );
+    }
+
+    #[test]
+    fn drag_past_right_emits_scroll_right() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // Layout: x=0, width=40 → grid_right = 40. x=40 is past.
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 40, 5);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: 1, dy: 0 }
+        );
+    }
+
+    #[test]
+    fn drag_past_left_into_gutter_emits_scroll_left() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // Layout: x=0, row_num_width=5 → row_num_x_end = 5. x=4 is in gutter.
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 4, 5);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseScroll { dx: -1, dy: 0 }
+        );
     }
 }
