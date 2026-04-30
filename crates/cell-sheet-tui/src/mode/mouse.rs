@@ -69,14 +69,11 @@ pub fn hit_test(layout: &GridLayout, x: u16, y: u16) -> MouseTarget {
     MouseTarget::Outside
 }
 
-use crate::action::Action;
+use crate::action::{Action, Mode};
 use crate::app::App;
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-// `DOUBLE_CLICK_MS` is consumed by Task 12's double-click logic; until then
-// it's referenced only by tests.
-#[allow(dead_code)]
 pub const DOUBLE_CLICK_MS: u64 = 400;
 
 pub const MOUSE_SCROLL_LINES: i32 = 3;
@@ -102,9 +99,6 @@ pub enum MouseDragState {
     },
 }
 
-// Fields are only read by Task 12's double-click logic; for now we just
-// construct the struct on left-down.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct LastClick {
     pub at: Instant,
@@ -139,12 +133,23 @@ pub fn handle_mouse_event(
     match event.kind {
         MouseEventKind::Down(MouseButton::Left) => match target {
             MouseTarget::Cell(pos) => {
-                state.drag = MouseDragState::DraggingCells { anchor: pos };
-                state.last_click = Some(LastClick {
-                    at: Instant::now(),
-                    pos,
-                });
-                Action::MouseClickCell(pos)
+                let now = Instant::now();
+                let is_double = state
+                    .last_click
+                    .map(|lc| {
+                        lc.pos == pos
+                            && now.duration_since(lc.at) <= Duration::from_millis(DOUBLE_CLICK_MS)
+                    })
+                    .unwrap_or(false);
+                if is_double {
+                    state.drag = MouseDragState::Idle;
+                    state.last_click = None;
+                    Action::ChangeMode(Mode::Insert)
+                } else {
+                    state.drag = MouseDragState::DraggingCells { anchor: pos };
+                    state.last_click = Some(LastClick { at: now, pos });
+                    Action::MouseClickCell(pos)
+                }
             }
             MouseTarget::ColHeader(c) => {
                 state.drag = MouseDragState::DraggingColumns { anchor_col: c };
@@ -739,6 +744,74 @@ mod tests {
         assert_eq!(lv.kind, VisualKind::Character);
         assert_eq!(app.cursor, (9, 9));
         assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn double_click_enters_insert_mode() {
+        use crate::action::Mode;
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let event = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        let _ = handle_mouse_event(event, &mut state, &app, Some(&layout));
+        let event2 = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        assert_eq!(
+            handle_mouse_event(event2, &mut state, &app, Some(&layout)),
+            Action::ChangeMode(Mode::Insert)
+        );
+    }
+
+    #[test]
+    fn click_then_different_cell_is_two_singles() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let _ = handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        let event2 = synth(MouseEventKind::Down(MouseButton::Left), 18, 5);
+        assert_eq!(
+            handle_mouse_event(event2, &mut state, &app, Some(&layout)),
+            Action::MouseClickCell((3, 1))
+        );
+    }
+
+    #[test]
+    fn double_click_clears_drag_and_last_click() {
+        // After firing the double-click action, no stale drag/last_click
+        // should linger so a subsequent third click is a fresh single
+        // click, not a triple-click.
+        use crate::action::Mode;
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let _ = handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        let _ = handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 8, 3),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // After the double-click:
+        assert_eq!(state.drag, MouseDragState::Idle);
+        assert!(state.last_click.is_none());
+        // A third click on the same cell is a fresh single click,
+        // because last_click was cleared.
+        let third = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        assert_eq!(
+            handle_mouse_event(third, &mut state, &app, Some(&layout)),
+            Action::MouseClickCell((1, 0))
+        );
+        // And it now has Mode::Insert in scope so the test compiles.
+        let _ = Mode::Insert;
     }
 
     #[test]
