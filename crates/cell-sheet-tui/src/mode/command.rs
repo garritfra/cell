@@ -81,6 +81,17 @@ pub fn parse_command(input: &str) -> Action {
         } else {
             Action::ShowHelp(Some(topic.to_string()))
         }
+    } else if let Some(rest) = input.strip_prefix("set mouse") {
+        let arg = rest.trim();
+        match arg {
+            "on" => Action::SetMouse(true),
+            "off" => Action::SetMouse(false),
+            // The toggle case is rewritten in run_loop, where we have
+            // access to the live mouse_enabled flag. Returning
+            // SetMouse(true) here is a placeholder; run_loop replaces it.
+            "toggle" => Action::SetMouse(true),
+            _ => Action::SetStatus("usage: :set mouse on|off|toggle".into()),
+        }
     } else {
         Action::Noop
     }
@@ -291,6 +302,30 @@ mod tests {
             parse_command("set delimiter=\0"),
             Action::SetStatus(_)
         ));
+    }
+
+    #[test]
+    fn parse_set_mouse_on() {
+        assert_eq!(parse_command("set mouse on"), Action::SetMouse(true));
+    }
+
+    #[test]
+    fn parse_set_mouse_off() {
+        assert_eq!(parse_command("set mouse off"), Action::SetMouse(false));
+    }
+
+    #[test]
+    fn parse_set_mouse_bogus_returns_status_error() {
+        assert!(matches!(
+            parse_command("set mouse bogus"),
+            Action::SetStatus(_)
+        ));
+    }
+
+    #[test]
+    fn parse_set_mouse_toggle() {
+        // Parser produces SetMouse(true); run_loop rewrites toggle vs current state.
+        assert_eq!(parse_command("set mouse toggle"), Action::SetMouse(true));
     }
 
     fn key(code: KeyCode) -> KeyEvent {

@@ -167,6 +167,9 @@ pub enum Action {
     },
     ReselectLastVisual,
     SetDelimiter(u8),
+    /// Toggle the mouse-enabled flag. The actual `Enable/DisableMouseCapture`
+    /// syscall is issued by `run_loop` after observing the flag change.
+    SetMouse(bool),
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,

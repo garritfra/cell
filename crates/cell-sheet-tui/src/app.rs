@@ -41,6 +41,10 @@ pub struct App {
     pub should_quit: bool,
     pub insert_buffer: String,
     pub delimiter: u8,
+    /// Off by default. Toggled by `:set mouse on|off|toggle`. When true,
+    /// the run_loop has issued `EnableMouseCapture` to the terminal and
+    /// is routing `Event::Mouse` to `mode::mouse::handle_mouse_event`.
+    pub mouse_enabled: bool,
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
@@ -94,6 +98,7 @@ impl App {
             should_quit: false,
             insert_buffer: String::new(),
             delimiter: b',',
+            mouse_enabled: false,
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),
@@ -865,6 +870,9 @@ impl App {
             Action::SetDelimiter(d) => {
                 self.delimiter = d;
                 self.status_message = Some(format!("Delimiter set to '{}'", d as char));
+            }
+            Action::SetMouse(b) => {
+                self.mouse_enabled = b;
             }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
@@ -2514,6 +2522,16 @@ mod tests {
         let mut app = App::new();
         app.process_action(Action::SetDelimiter(b'\t'));
         assert_eq!(app.delimiter, b'\t');
+    }
+
+    #[test]
+    fn set_mouse_flag_starts_off_and_toggles() {
+        let mut app = App::new();
+        assert!(!app.mouse_enabled);
+        app.process_action(Action::SetMouse(true));
+        assert!(app.mouse_enabled);
+        app.process_action(Action::SetMouse(false));
+        assert!(!app.mouse_enabled);
     }
 
     #[test]
