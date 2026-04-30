@@ -175,6 +175,11 @@ pub enum Action {
     /// state.
     ToggleMouse,
     MouseClickCell(CellPos),
+    /// Drag in progress: extend the cursor to `pos`. The Visual selection
+    /// is set up by `run_loop` on the first drag event after the
+    /// originating `Down(Left)`; subsequent drags just move the cursor and
+    /// the existing `VisualState` re-derives the selection.
+    MouseDragTo(CellPos),
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,

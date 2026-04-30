@@ -886,6 +886,10 @@ impl App {
                 self.cursor = pos;
                 self.viewport.ensure_visible(self.cursor);
             }
+            Action::MouseDragTo(pos) => {
+                self.cursor = pos;
+                self.viewport.ensure_visible(self.cursor);
+            }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }

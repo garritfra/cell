@@ -545,6 +545,17 @@ fn run_loop(
                     let layout = app.last_grid_layout.clone();
                     let action =
                         mode::mouse::handle_mouse_event(me, &mut mouse_state, app, layout.as_ref());
+                    if let Action::MouseDragTo(_) = &action {
+                        if app.mode == Mode::Normal {
+                            if let mode::mouse::MouseDragState::DraggingCells { anchor } =
+                                mouse_state.drag
+                            {
+                                visual_state =
+                                    Some(VisualState::new(anchor, VisualKind::Character));
+                                app.mode = Mode::Visual;
+                            }
+                        }
+                    }
                     app.process_action(action);
                 }
                 _ => {}

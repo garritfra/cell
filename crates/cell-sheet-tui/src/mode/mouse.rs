@@ -150,6 +150,13 @@ pub fn handle_mouse_event(
             }
             _ => Action::Noop,
         },
+        MouseEventKind::Drag(MouseButton::Left) => match state.drag {
+            MouseDragState::DraggingCells { .. } => match target {
+                MouseTarget::Cell(pos) => Action::MouseDragTo(pos),
+                _ => Action::Noop,
+            },
+            _ => Action::Noop,
+        },
         MouseEventKind::Up(MouseButton::Left) => {
             state.drag = MouseDragState::Idle;
             Action::Noop
@@ -313,5 +320,53 @@ mod tests {
         let event = synth(MouseEventKind::Up(MouseButton::Left), 8, 3);
         let _ = handle_mouse_event(event, &mut state, &app, Some(&layout));
         assert_eq!(state.drag, MouseDragState::Idle);
+    }
+
+    #[test]
+    fn drag_after_down_emits_drag_to() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let down = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        handle_mouse_event(down, &mut state, &app, Some(&layout));
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 18, 5);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseDragTo((3, 1))
+        );
+    }
+
+    #[test]
+    fn drag_without_down_is_noop() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 18, 5);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::Noop
+        );
+    }
+
+    #[test]
+    fn drag_outside_grid_is_noop() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        let down = synth(MouseEventKind::Down(MouseButton::Left), 8, 3);
+        handle_mouse_event(down, &mut state, &app, Some(&layout));
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 8, 0);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::Noop
+        );
+    }
+
+    #[test]
+    fn click_then_drag_moves_cursor_to_target() {
+        let mut app = App::new();
+        app.process_action(Action::MouseClickCell((1, 0)));
+        app.process_action(Action::MouseDragTo((3, 2)));
+        assert_eq!(app.cursor, (3, 2));
     }
 }
