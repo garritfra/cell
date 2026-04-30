@@ -542,9 +542,42 @@ fn run_loop(
                         continue;
                     }
                     app.status_message = None;
+                    let drag_was_idle = mouse_state.drag == mode::mouse::MouseDragState::Idle;
                     let layout = app.last_grid_layout.clone();
                     let action =
                         mode::mouse::handle_mouse_event(me, &mut mouse_state, app, layout.as_ref());
+
+                    // First click on a grid target while in another mode:
+                    // commit/cancel/exit before dispatching.
+                    let is_first_grid_action = drag_was_idle
+                        && matches!(
+                            &action,
+                            Action::MouseClickCell(_)
+                                | Action::MouseSelectColumn(_)
+                                | Action::MouseSelectRow(_)
+                        );
+                    if is_first_grid_action {
+                        match app.mode {
+                            Mode::Insert => {
+                                let pos = app.cursor;
+                                let buf = std::mem::take(&mut app.insert_buffer);
+                                app.process_action(Action::EditCell(pos, buf));
+                                app.mode = Mode::Normal;
+                            }
+                            Mode::Command => {
+                                app.command_line.clear();
+                                app.command_history_idx = None;
+                                app.command_history_scratch.clear();
+                                app.mode = Mode::Normal;
+                            }
+                            Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
+                                visual_state = None;
+                                app.mode = Mode::Normal;
+                            }
+                            _ => {}
+                        }
+                    }
+
                     match &action {
                         Action::MouseDragTo(_) if app.mode == Mode::Normal => {
                             if let mode::mouse::MouseDragState::DraggingCells { anchor } =

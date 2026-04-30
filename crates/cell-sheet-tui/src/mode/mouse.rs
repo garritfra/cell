@@ -688,4 +688,28 @@ mod tests {
             Action::MouseScroll { dx: -1, dy: 0 }
         );
     }
+
+    #[test]
+    fn click_in_insert_committed_cell_then_moves() {
+        // Simulate Task 11's run_loop logic by hand: commit Insert
+        // edit, then dispatch MouseClickCell.
+        let mut app = App::new();
+        app.mode = crate::action::Mode::Insert;
+        app.cursor = (0, 0);
+        app.insert_buffer = "hello".to_string();
+
+        let pos = app.cursor;
+        let buf = std::mem::take(&mut app.insert_buffer);
+        app.process_action(Action::EditCell(pos, buf));
+        app.mode = crate::action::Mode::Normal;
+        app.process_action(Action::MouseClickCell((3, 5)));
+
+        assert_eq!(app.cursor, (3, 5));
+        assert_eq!(app.mode, crate::action::Mode::Normal);
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.raw.clone()),
+            Some("hello".into()),
+            "buffer should have been committed"
+        );
+    }
 }
