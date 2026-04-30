@@ -4,12 +4,25 @@
 
 ### Added
 
-- Optional mouse support (off by default; enable with `:set mouse on`).
-  Left-click moves the cursor; click+drag selects a range; clicks on
-  column/row headers select whole columns/rows; scroll wheel scrolls
-  the viewport without moving the cursor; double-click enters Insert
-  mode. Hold Shift (or your terminal's bypass modifier) to use native
-  text selection for copy. (#70)
+- Optional mouse support, off by default. Toggle at runtime with
+  `:set mouse on | off | toggle`. When enabled: left-click moves the
+  cursor; click+drag inside the grid selects a Visual (Character)
+  range; click+drag on a column header selects whole columns and on
+  a row header selects whole rows (anchor stays at the click site so
+  the highlighted cell is where you pointed); scroll wheel scrolls
+  the viewport up/down by 3 rows without moving the cursor (matches
+  Vim's mouse behavior); horizontal wheel scrolls left/right when the
+  terminal emits `ScrollLeft` / `ScrollRight` (commonly Shift+wheel);
+  double-click on a cell enters Insert mode on it; dragging past the
+  visible edge auto-scrolls the viewport. A click on a grid cell
+  while in Insert mode commits the in-progress edit, in Command mode
+  cancels the prompt (preserving search-origin restore), and in Visual
+  mode exits the selection (preserving the `gv` snapshot) before the
+  cursor moves. Clicks on padding, the formula bar, or the status bar
+  are always no-ops. Hold Shift (or your terminal's bypass modifier
+  — Option/Alt on macOS Terminal/iTerm) to fall back to the
+  terminal's native text selection for copying values out
+  ([#84](https://github.com/garritfra/cell/pull/84))
 
 ### Fixed
 
