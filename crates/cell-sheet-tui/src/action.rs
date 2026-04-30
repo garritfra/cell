@@ -180,6 +180,10 @@ pub enum Action {
     /// originating `Down(Left)`; subsequent drags just move the cursor and
     /// the existing `VisualState` re-derives the selection.
     MouseDragTo(CellPos),
+    /// Anchor (or extend) a whole-column selection. The corresponding
+    /// VisualBlock setup happens in `run_loop` parallel to the existing
+    /// keyboard `v` flow.
+    MouseSelectColumn(usize),
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,

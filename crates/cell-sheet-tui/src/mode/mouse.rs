@@ -92,12 +92,11 @@ pub enum MouseDragState {
     DraggingCells {
         anchor: CellPos,
     },
-    // `DraggingColumns` / `DraggingRows` are armed by header-drag logic in
-    // Tasks 7+. Keep the variants here so the state machine is complete.
-    #[allow(dead_code)]
     DraggingColumns {
         anchor_col: usize,
     },
+    // `DraggingRows` is armed by header-drag logic in Task 8. Keep the
+    // variant here so the state machine is complete.
     #[allow(dead_code)]
     DraggingRows {
         anchor_row: usize,
@@ -148,11 +147,22 @@ pub fn handle_mouse_event(
                 });
                 Action::MouseClickCell(pos)
             }
+            MouseTarget::ColHeader(c) => {
+                state.drag = MouseDragState::DraggingColumns { anchor_col: c };
+                state.last_click = None;
+                Action::MouseSelectColumn(c)
+            }
             _ => Action::Noop,
         },
         MouseEventKind::Drag(MouseButton::Left) => match state.drag {
             MouseDragState::DraggingCells { .. } => match target {
                 MouseTarget::Cell(pos) => Action::MouseDragTo(pos),
+                _ => Action::Noop,
+            },
+            MouseDragState::DraggingColumns { .. } => match target {
+                MouseTarget::ColHeader(c) | MouseTarget::Cell((_, c)) => {
+                    Action::MouseSelectColumn(c)
+                }
                 _ => Action::Noop,
             },
             _ => Action::Noop,
@@ -368,5 +378,60 @@ mod tests {
         app.process_action(Action::MouseClickCell((1, 0)));
         app.process_action(Action::MouseDragTo((3, 2)));
         assert_eq!(app.cursor, (3, 2));
+    }
+
+    #[test]
+    fn down_on_column_header_emits_select_column() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        // x=18, y=1 → ColHeader(1).
+        let event = synth(MouseEventKind::Down(MouseButton::Left), 18, 1);
+        assert_eq!(
+            handle_mouse_event(event, &mut state, &app, Some(&layout)),
+            Action::MouseSelectColumn(1)
+        );
+        assert_eq!(
+            state.drag,
+            MouseDragState::DraggingColumns { anchor_col: 1 }
+        );
+    }
+
+    #[test]
+    fn drag_in_column_mode_extends_to_other_column() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 18, 1),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // x=32, y=5 → Cell(_, 2). Drag from col 1 to col 2.
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 32, 5);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseSelectColumn(2)
+        );
+    }
+
+    #[test]
+    fn drag_in_column_mode_back_to_header_extends() {
+        let app = App::new();
+        let mut state = MouseState::new();
+        let layout = fixture();
+        handle_mouse_event(
+            synth(MouseEventKind::Down(MouseButton::Left), 18, 1),
+            &mut state,
+            &app,
+            Some(&layout),
+        );
+        // x=32, y=1 → ColHeader(2).
+        let drag = synth(MouseEventKind::Drag(MouseButton::Left), 32, 1);
+        assert_eq!(
+            handle_mouse_event(drag, &mut state, &app, Some(&layout)),
+            Action::MouseSelectColumn(2)
+        );
     }
 }

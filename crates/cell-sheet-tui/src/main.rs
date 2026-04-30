@@ -545,8 +545,8 @@ fn run_loop(
                     let layout = app.last_grid_layout.clone();
                     let action =
                         mode::mouse::handle_mouse_event(me, &mut mouse_state, app, layout.as_ref());
-                    if let Action::MouseDragTo(_) = &action {
-                        if app.mode == Mode::Normal {
+                    match &action {
+                        Action::MouseDragTo(_) if app.mode == Mode::Normal => {
                             if let mode::mouse::MouseDragState::DraggingCells { anchor } =
                                 mouse_state.drag
                             {
@@ -555,6 +555,18 @@ fn run_loop(
                                 app.mode = Mode::Visual;
                             }
                         }
+                        Action::MouseSelectColumn(_) => {
+                            if app.mode != Mode::VisualBlock {
+                                if let mode::mouse::MouseDragState::DraggingColumns { anchor_col } =
+                                    mouse_state.drag
+                                {
+                                    visual_state =
+                                        Some(VisualState::new((0, anchor_col), VisualKind::Block));
+                                    app.mode = Mode::VisualBlock;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                     app.process_action(action);
                 }
