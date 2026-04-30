@@ -1,3 +1,4 @@
+use crate::mode::mouse::GridLayout;
 use crate::viewport::Viewport;
 use cell_sheet_core::model::{col_index_to_label, CellPos, CellValue, Sheet};
 use ratatui::{
@@ -12,6 +13,7 @@ pub struct Grid<'a> {
     pub viewport: &'a Viewport,
     pub cursor: CellPos,
     pub selection: Option<(CellPos, CellPos)>,
+    pub layout_out: &'a mut Option<GridLayout>,
 }
 
 const ROW_NUM_WIDTH: u16 = 5;
@@ -53,6 +55,18 @@ impl<'a> Widget for Grid<'a> {
             visible_cols.push((col, x, w));
             x += w + 1;
         }
+
+        *self.layout_out = Some(GridLayout {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height,
+            row_num_width: ROW_NUM_WIDTH,
+            header_height: 1,
+            row_offset: self.viewport.row_offset,
+            col_offset: self.viewport.col_offset,
+            visible_cols: visible_cols.clone(),
+        });
 
         // Rows
         for row_offset in 0..area.height.saturating_sub(1) {
@@ -108,5 +122,41 @@ impl<'a> Widget for Grid<'a> {
                 buf.set_string(col_x, y, truncated, style);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn render_publishes_grid_layout() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "a");
+        sheet.set_cell((0, 1), "b");
+        let viewport = Viewport::new();
+        let area = Rect::new(0, 1, 30, 5);
+        let mut buf = Buffer::empty(area);
+        let mut layout = None;
+
+        Grid {
+            sheet: &sheet,
+            viewport: &viewport,
+            cursor: (0, 0),
+            selection: None,
+            layout_out: &mut layout,
+        }
+        .render(area, &mut buf);
+
+        let l = layout.expect("layout should be published");
+        assert_eq!(l.x, 0);
+        assert_eq!(l.y, 1);
+        assert_eq!(l.width, 30);
+        assert_eq!(l.row_num_width, ROW_NUM_WIDTH);
+        assert_eq!(l.header_height, 1);
+        assert!(!l.visible_cols.is_empty());
+        assert_eq!(l.visible_cols[0].0, 0);
     }
 }

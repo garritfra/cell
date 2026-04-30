@@ -6,6 +6,7 @@ pub mod status_bar;
 
 use crate::action::Mode;
 use crate::app::App;
+use crate::mode::mouse::GridLayout;
 use cell_sheet_core::model::CellPos;
 use command_line::CommandLine;
 use formula_bar::FormulaBar;
@@ -19,7 +20,7 @@ use status_bar::StatusBar;
 
 pub fn render(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     selection: Option<(CellPos, CellPos)>,
     insert_cursor: usize,
     partial_command: Option<&str>,
@@ -74,15 +75,18 @@ pub fn render(
         }
     }
 
+    let mut grid_layout: Option<GridLayout> = None;
     frame.render_widget(
         Grid {
             sheet: &app.sheet,
             viewport: &app.viewport,
             cursor: app.cursor,
             selection,
+            layout_out: &mut grid_layout,
         },
         chunks[1],
     );
+    app.last_grid_layout = grid_layout;
 
     let file_name = app
         .file_path

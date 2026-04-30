@@ -1,5 +1,6 @@
 use crate::action::{Action, CaseOp, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
+use crate::mode::mouse::GridLayout;
 use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
@@ -45,6 +46,9 @@ pub struct App {
     /// the run_loop has issued `EnableMouseCapture` to the terminal and
     /// is routing `Event::Mouse` to `mode::mouse::handle_mouse_event`.
     pub mouse_enabled: bool,
+    /// Geometry from the most recent grid render, used by mouse hit-testing
+    /// on the next event. `None` until the first frame is drawn.
+    pub last_grid_layout: Option<GridLayout>,
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
@@ -99,6 +103,7 @@ impl App {
             insert_buffer: String::new(),
             delimiter: b',',
             mouse_enabled: false,
+            last_grid_layout: None,
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),

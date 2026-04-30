@@ -16,10 +16,6 @@ pub enum MouseTarget {
 /// Geometry snapshot of the most recent grid render. Built by
 /// `render::grid::Grid::render` and stashed on `App` so the next mouse
 /// event can hit-test against accurate coordinates.
-#[expect(
-    dead_code,
-    reason = "wired up by render layer / event loop in Tasks 3-4"
-)]
 #[derive(Debug, Clone)]
 pub struct GridLayout {
     /// Top-left corner of the grid widget (in terminal cells).
@@ -33,7 +29,11 @@ pub struct GridLayout {
     pub header_height: u16,
     /// `viewport.row_offset` at render time.
     pub row_offset: usize,
-    /// `viewport.col_offset` at render time.
+    /// `viewport.col_offset` at render time. Captured for completeness;
+    /// `hit_test` resolves columns via `visible_cols` so this isn't read
+    /// yet. Will be consumed in Task 4 when the event loop interprets
+    /// scroll wheel events relative to the viewport origin.
+    #[allow(dead_code)]
     pub col_offset: usize,
     /// Visible columns in left-to-right order: `(col_index, screen_x, width)`.
     pub visible_cols: Vec<(usize, u16, u16)>,
