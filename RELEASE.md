@@ -44,7 +44,8 @@ The tag-triggered artifact jobs in `release.yml` own:
 - publishing the draft GitHub Release after artifacts are attached
 
 The workspace has two public crates but one product release, so
-[`release-plz.toml`](release-plz.toml) disables per-crate tags by default and
+[`release-plz.toml`](release-plz.toml) is only configuration for the
+`release-plz` jobs in `release.yml`: it disables per-crate tags by default and
 enables a single `v{{ version }}` tag/release for `cell-sheet-tui`.
 
 ## Failure Handling

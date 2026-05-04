@@ -6,7 +6,9 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
+  pull-requests: write
 
 env:
   CARGO_TERM_COLOR: always
