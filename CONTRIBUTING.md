@@ -134,7 +134,7 @@ why rather than disabling it globally.
 ### Commit messages
 
 This repo uses [Conventional Commits](https://www.conventionalcommits.org/)
-prefixes:
+prefixes for both commit subjects and pull request titles:
 
 - `feat:` — new user-visible behavior
 - `fix:` — bug fix
@@ -143,9 +143,13 @@ prefixes:
 - `chore:` — repo maintenance, dependency bumps, etc.
 - `release:` — version bumps and release prep (maintainers only)
 
-Keep the subject line under ~72 characters and write it in the imperative
-mood (`fix: make visual-mode d undoable`, not `fixed visual-mode d`). Use the
-body to explain *why*, not *what* — the diff already shows what.
+Keep commit subjects and PR titles under ~72 characters and write them in the
+imperative mood (`fix: make visual-mode d undoable`, not
+`fixed visual-mode d`). Use commit bodies and PR descriptions to explain
+*why*, not *what* — the diff already shows what.
+
+PR titles should also use the same Conventional Commit prefix because release
+automation uses merged PR metadata when generating changelog entries.
 
 ### Changelog
 
@@ -160,13 +164,15 @@ don't need a changelog entry.
 1. Open or comment on an issue describing the problem you're solving, unless
    the change is trivial (typo, obvious bug fix).
 2. Push your branch and open a pull request against `main`.
-3. In the PR description, include:
+3. Use a Conventional Commit PR title, for example
+   `feat: add formula autocomplete` or `fix: preserve formulas on paste`.
+4. In the PR description, include:
    - **What** the change does and **why**.
    - Linked issues (`Fixes #NN`, `Refs #NN`).
    - For UI changes: a screenshot or short asciinema recording.
    - For new formulas or commands: an example and the expected result.
-4. Ensure CI is green (`fmt`, `clippy`, `test` on Linux/macOS/Windows, `build`).
-5. Be responsive to review feedback. It's normal for a PR to go through one
+5. Ensure CI is green (`fmt`, `clippy`, `test` on Linux/macOS/Windows, `build`).
+6. Be responsive to review feedback. It's normal for a PR to go through one
    or two rounds of revisions.
 
 Small, focused PRs get reviewed faster than large ones. If you're working on
