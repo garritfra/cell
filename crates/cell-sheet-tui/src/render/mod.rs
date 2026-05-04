@@ -101,7 +101,7 @@ pub fn render(
             cursor: app.cursor,
             dirty: app.dirty,
             file_name,
-            message: app.status_message.as_deref(),
+            message: app.status.as_deref(),
             partial_command,
         },
         chunks[2],

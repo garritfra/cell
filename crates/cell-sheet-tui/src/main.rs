@@ -7,6 +7,7 @@ mod headless;
 mod mode;
 mod render;
 mod search;
+mod status;
 mod undo;
 mod viewport;
 
@@ -285,7 +286,7 @@ fn run_loop(
                         continue;
                     }
 
-                    app.status_message = None;
+                    app.status.clear();
 
                     let action = match app.mode {
                         Mode::Normal => normal_state.handle_key(key, app),
@@ -471,7 +472,7 @@ fn run_loop(
                     if !app.mouse_enabled {
                         continue;
                     }
-                    app.status_message = None;
+                    app.status.clear();
                     let drag_was_idle = mouse_state.drag == mode::mouse::MouseDragState::Idle;
                     let layout = app.last_grid_layout.clone();
                     let action =

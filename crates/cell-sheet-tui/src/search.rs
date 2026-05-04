@@ -45,7 +45,7 @@ impl App {
                         self.cursor = origin;
                         self.viewport.ensure_visible(self.cursor);
                     }
-                    self.status_message = Some(format!("Pattern not found: {}", pattern));
+                    self.status.set(format!("Pattern not found: {}", pattern));
                 }
             }
             Action::EnterSearch(direction) => {
@@ -124,7 +124,7 @@ impl App {
                         direction,
                     });
                 } else {
-                    self.status_message = Some("No string under cursor".into());
+                    self.status.set("No string under cursor");
                 }
             }
             _ => unreachable!("non-search action routed to search handler"),
@@ -137,7 +137,7 @@ impl App {
             None => return,
         };
         if !self.find_from(&pattern, forward, self.cursor, false) {
-            self.status_message = Some(format!("Pattern not found: {}", pattern));
+            self.status.set(format!("Pattern not found: {}", pattern));
         }
     }
 

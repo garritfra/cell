@@ -7,6 +7,7 @@ use crate::file_format::FileFormat;
 use crate::mode::mouse::GridLayout;
 use crate::mode::visual::VisualKind;
 use crate::search::SearchState;
+use crate::status::StatusManager;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
 use cell_sheet_core::engine::SheetEngine;
@@ -25,7 +26,7 @@ pub struct App {
     pub register: Option<Register>,
     pub undo_stack: UndoStack,
     pub command: CommandState,
-    pub status_message: Option<String>,
+    pub status: StatusManager,
     pub search: SearchState,
     pub file_path: Option<PathBuf>,
     pub file_format: FileFormat,
@@ -74,7 +75,7 @@ impl App {
             register: None,
             undo_stack: UndoStack::new(),
             command: CommandState::default(),
-            status_message: None,
+            status: StatusManager::default(),
             search: SearchState::default(),
             file_path: None,
             file_format: FileFormat::Csv,
@@ -169,10 +170,10 @@ impl App {
                 self.file_path = Some(path.clone());
                 self.file_format = format;
                 self.dirty = false;
-                self.status_message = Some(format!("Written to {}", path.display()));
+                self.status.set(format!("Written to {}", path.display()));
             }
             Err(e) => {
-                self.status_message = Some(format!("Error saving: {}", e));
+                self.status.set(format!("Error saving: {}", e));
             }
         }
     }
@@ -731,7 +732,7 @@ mod tests {
         app.mode = Mode::Normal;
         app.process_action(Action::ShowHelp(Some("nonexistent".into())));
         assert_eq!(app.mode, Mode::Normal);
-        assert_eq!(app.status_message, Some("No help for 'nonexistent'".into()));
+        assert_eq!(app.status.as_deref(), Some("No help for 'nonexistent'"));
     }
 
     #[test]
@@ -1040,7 +1041,7 @@ mod tests {
             direction: SearchDirection::Forward,
         });
         assert_eq!(app.cursor, (0, 0));
-        assert!(app.status_message.is_some());
+        assert!(app.status.as_deref().is_some());
     }
 
     #[test]
@@ -1330,11 +1331,7 @@ mod tests {
             line_wise: false,
         });
         assert_eq!(app.cursor, (1, 1));
-        assert!(app
-            .status_message
-            .as_deref()
-            .unwrap()
-            .contains("Mark not set"));
+        assert!(app.status.as_deref().unwrap().contains("Mark not set"));
     }
 
     #[test]
@@ -1539,10 +1536,7 @@ mod tests {
         app.cursor = (0, 0);
         app.process_action(Action::SearchCellValue { backward: false });
         assert_eq!(app.search.pattern, None);
-        assert_eq!(
-            app.status_message.as_deref(),
-            Some("No string under cursor")
-        );
+        assert_eq!(app.status.as_deref(), Some("No string under cursor"));
     }
 
     #[test]
@@ -1551,7 +1545,7 @@ mod tests {
         assert_eq!(app.delimiter, b',', "default delimiter should be comma");
         app.process_action(Action::SetDelimiter(b'|'));
         assert_eq!(app.delimiter, b'|');
-        assert_eq!(app.status_message.as_deref(), Some("Delimiter set to '|'"));
+        assert_eq!(app.status.as_deref(), Some("Delimiter set to '|'"));
     }
 
     #[test]
@@ -1792,7 +1786,7 @@ mod tests {
         app.file_path = Some(std::path::PathBuf::from("data.csv"));
         app.delimiter = b'|';
         app.process_action(Action::Save(None));
-        let msg = app.status_message.as_deref().unwrap_or("");
+        let msg = app.status.as_deref().unwrap_or("");
         assert!(
             msg.contains("Non-standard delimiter"),
             "expected delimiter warning, got: {msg:?}"
@@ -1805,7 +1799,7 @@ mod tests {
         app.file_path = Some(std::path::PathBuf::from("data.tsv"));
         app.delimiter = b'|';
         app.process_action(Action::Save(None));
-        let msg = app.status_message.as_deref().unwrap_or("");
+        let msg = app.status.as_deref().unwrap_or("");
         assert!(
             msg.contains("Non-standard delimiter"),
             "expected delimiter warning, got: {msg:?}"
@@ -1821,7 +1815,7 @@ mod tests {
         app.file_path = Some(std::path::PathBuf::from("data.csv"));
         app.delimiter = b',';
         app.process_action(Action::Save(None));
-        let msg = app.status_message.as_deref().unwrap_or("");
+        let msg = app.status.as_deref().unwrap_or("");
         assert!(
             !msg.contains("Non-standard delimiter"),
             "unexpected delimiter warning: {msg:?}"
@@ -1836,7 +1830,7 @@ mod tests {
         // ForceSave must NOT produce the delimiter warning.
         // (The write may produce an I/O error if the path can't be written, which is fine.)
         app.process_action(Action::ForceSave(None));
-        let msg = app.status_message.as_deref().unwrap_or("");
+        let msg = app.status.as_deref().unwrap_or("");
         assert!(
             !msg.contains("Non-standard delimiter"),
             "ForceSave should bypass delimiter warning, got: {msg:?}"
@@ -2197,7 +2191,7 @@ mod tests {
             app.sheet.get_cell((0, 0)).map(|c| c.raw.as_str()),
             Some("=SUM(A1:A5)")
         );
-        assert!(app.status_message.is_some());
+        assert!(app.status.as_deref().is_some());
     }
 
     #[test]
@@ -2402,10 +2396,7 @@ mod tests {
             raw_before
         );
         // Status message set
-        assert_eq!(
-            app.status_message.as_deref(),
-            Some("E: Cannot increment a formula")
-        );
+        assert_eq!(app.status.as_deref(), Some("E: Cannot increment a formula"));
     }
 
     #[test]
