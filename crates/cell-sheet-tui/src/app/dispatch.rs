@@ -58,8 +58,8 @@ impl App {
             }
             Action::Quit { force } => {
                 if !force && self.dirty {
-                    self.status_message =
-                        Some("No write since last change (use :q! to override)".into());
+                    self.status
+                        .set("No write since last change (use :q! to override)");
                 } else {
                     self.should_quit = true;
                 }
@@ -197,14 +197,14 @@ impl App {
                 if let Some(path) = path {
                     let format = Self::format_from_path(&path);
                     if !matches!(format, FileFormat::Cell) && self.has_formulas() {
-                        self.status_message = Some(
-                            "Sheet contains formulas that will be lost. Use :w file.cell to preserve, or :w! to save as CSV anyway.".into()
+                        self.status.set(
+                            "Sheet contains formulas that will be lost. Use :w file.cell to preserve, or :w! to save as CSV anyway."
                         );
                         return;
                     }
                     if let Some(expected_delim) = format.canonical_delimiter() {
                         if self.delimiter != expected_delim {
-                            self.status_message = Some(format!(
+                            self.status.set(format!(
                                 "Non-standard delimiter '{}' will be used. Use :w! to force, or save as .tsv / .psv.",
                                 self.delimiter as char
                             ));
@@ -213,7 +213,7 @@ impl App {
                     }
                     self.do_save(&path, format);
                 } else {
-                    self.status_message = Some("No file name".into());
+                    self.status.set("No file name");
                 }
             }
             Action::ForceSave(path_opt) => {
@@ -224,7 +224,7 @@ impl App {
                     let format = Self::format_from_path(&path);
                     self.do_save(&path, format);
                 } else {
-                    self.status_message = Some("No file name".into());
+                    self.status.set("No file name");
                 }
             }
             action @ (Action::Search { .. }
@@ -240,7 +240,7 @@ impl App {
                 cell_sheet_core::engine::SheetEngine::new(&mut self.sheet, &mut self.deps)
                     .sort_by_column_and_recalculate(col, ascending);
                 self.dirty = true;
-                self.status_message = Some(format!(
+                self.status.set(format!(
                     "Sorted by column {} {}",
                     cell_sheet_core::model::col_index_to_label(col),
                     if ascending { "ascending" } else { "descending" }
@@ -531,7 +531,7 @@ impl App {
                         self.help_scroll = 0;
                         self.mode = Mode::Help;
                     } else {
-                        self.status_message = Some(format!("No help for '{}'", tag));
+                        self.status.set(format!("No help for '{}'", tag));
                     }
                 }
                 None => {
@@ -587,7 +587,7 @@ impl App {
                     self.viewport.ensure_visible(self.cursor);
                 }
                 None => {
-                    self.status_message = Some(format!("E20: Mark not set: {}", name));
+                    self.status.set(format!("E20: Mark not set: {}", name));
                 }
             },
             Action::JumpBack => {
@@ -626,7 +626,7 @@ impl App {
             }
             Action::SetDelimiter(d) => {
                 self.delimiter = d;
-                self.status_message = Some(format!("Delimiter set to '{}'", d as char));
+                self.status.set(format!("Delimiter set to '{}'", d as char));
             }
             Action::SetMouse(b) => {
                 self.mouse_enabled = b;
@@ -672,7 +672,7 @@ impl App {
                 }
             }
             Action::SetStatus(msg) => {
-                self.status_message = Some(msg);
+                self.status.set(msg);
             }
             Action::RepeatLastChange => {
                 if let Some(change) = self.last_change.take() {
@@ -695,7 +695,7 @@ impl App {
                     return;
                 }
                 if raw.starts_with('=') {
-                    self.status_message = Some("Cannot change case of a formula cell".into());
+                    self.status.set("Cannot change case of a formula cell");
                     return;
                 }
                 let new_raw = apply_case_op(&raw, op);
@@ -747,7 +747,7 @@ impl App {
                 if let Some(cell) = self.sheet.get_cell(pos) {
                     let raw = cell.raw.clone();
                     if raw.starts_with('=') {
-                        self.status_message = Some("E: Cannot increment a formula".into());
+                        self.status.set("E: Cannot increment a formula");
                     } else if let Ok(n) = raw.parse::<f64>() {
                         let new_raw = (n + delta as f64).to_string();
                         self.undo_stack.push(UndoEntry::CellEdit {
