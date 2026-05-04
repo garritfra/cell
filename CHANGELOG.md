@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## [0.5.0](https://github.com/garritfra/cell/compare/v0.4.0...v0.5.0) - 2026-05-04
+
+### Added
+
+- *(tui)* mouse support ([#70](https://github.com/garritfra/cell/pull/70)) ([#84](https://github.com/garritfra/cell/pull/84))
+
+### Fixed
+
+- escape quotes and backslashes in .cell format labels ([#85](https://github.com/garritfra/cell/pull/85))
+- *(cell-format)* surface parse errors for corrupted size/col-width headers ([#76](https://github.com/garritfra/cell/pull/76)) ([#83](https://github.com/garritfra/cell/pull/83))
+- add missing help entries for 0.3.0 viewport, marks, jump-list, etc. ([#69](https://github.com/garritfra/cell/pull/69))
+
+### Other
+
+- automate releases with release-plz ([#97](https://github.com/garritfra/cell/pull/97))
+- extract search state ([#95](https://github.com/garritfra/cell/pull/95))
+- centralize file format policy ([#90](https://github.com/garritfra/cell/pull/90))
+- centralize sheet mutation invariants ([#89](https://github.com/garritfra/cell/pull/89))
+- extract app action dispatch ([#88](https://github.com/garritfra/cell/pull/88))
+- bring README in sync with shipped features
+
 ### Added
 
 - Optional mouse support, off by default. Toggle at runtime with
