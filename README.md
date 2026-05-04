@@ -276,20 +276,19 @@ The core library is independent of the terminal UI and can be tested without a t
 
 ## Releasing
 
-1. Update the version in `[Cargo.toml](Cargo.toml)` (workspace version)
-2. Update `[CHANGELOG.md](CHANGELOG.md)` with the new version's changes
-3. Commit: `git commit -am "release: bump to vX.Y.Z"`
-4. Tag and push:
-  ```sh
-   git tag vX.Y.Z
-   git push origin main --tags
-  ```
+Releases are automated with [release-plz](https://release-plz.dev/) from the
+[release workflow](.github/workflows/release.yml):
 
-Pushing a `v*` tag triggers the [release workflow](.github/workflows/release.yml), which:
+- Pushes to `main` open or update a release PR with the next version and
+  changelog updates.
+- Merging the release PR publishes `cell-sheet-core` and `cell-sheet-tui` to
+  [crates.io](https://crates.io) via trusted publishing, creates the `vX.Y.Z`
+  tag, and creates a draft GitHub Release.
+- The `vX.Y.Z` tag then builds binaries for Linux (x86_64, aarch64), macOS
+  (x86_64, aarch64), and Windows (x86_64), uploads archives and SHA256
+  checksums, and publishes the GitHub Release.
 
-- Builds binaries for Linux (x86_64, aarch64), macOS (x86_64, aarch64), and Windows (x86_64)
-- Creates a GitHub Release with the binaries attached
-- Publishes `cell-sheet-core` and `cell-sheet-tui` to [crates.io](https://crates.io) via trusted publishing
+See [RELEASE.md](RELEASE.md) for maintainer instructions and failure handling.
 
 ## Contributing
 

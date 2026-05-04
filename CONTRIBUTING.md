@@ -190,10 +190,12 @@ for broader proposals.
 ## Releasing
 
 Releases are cut by maintainers. The process is documented in the
-[Releasing section of the README](README.md#releasing): bump the workspace
-version in `Cargo.toml`, move `Unreleased` entries into the new version
-section in `CHANGELOG.md`, commit, tag `vX.Y.Z`, and push the tag. The
-release workflow handles binaries and `crates.io` publication.
+[Releasing section of the README](README.md#releasing) and
+[`RELEASE.md`](RELEASE.md): `release-plz` opens a release PR with the next
+workspace version and changelog updates. Merging that PR publishes the crates
+via trusted publishing, creates the `vX.Y.Z` tag, and lets the release workflow
+attach binaries and checksums to the GitHub Release. Maintainers should not
+push release tags manually during the normal flow.
 
 ## License
 
