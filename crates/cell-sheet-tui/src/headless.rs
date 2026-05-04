@@ -9,8 +9,9 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use cell_sheet_core::engine::SheetEngine;
 use cell_sheet_core::formula::ast::{CellRef, Expr};
-use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
+use cell_sheet_core::formula::deps::DepGraph;
 use cell_sheet_core::formula::{eval, parser};
 use cell_sheet_core::io::{cell_format, csv as csv_io};
 use cell_sheet_core::model::{CellPos, CellValue, Sheet};
@@ -134,7 +135,7 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
             })?;
             apply_write(&mut sheet, &mut deps, pos, value);
         }
-        recalculate(&mut sheet, &deps);
+        SheetEngine::new(&mut sheet, &mut deps).recalculate();
         save(&opts.file, format, &sheet, delimiter)
             .map_err(|e| format!("failed to write {}: {e}", opts.file.display()))?;
     }
@@ -173,16 +174,7 @@ fn load(
     };
     let mut deps = DepGraph::new();
 
-    let formula_cells: Vec<_> = sheet
-        .cells
-        .iter()
-        .filter(|(_, cell)| cell.raw.starts_with('='))
-        .map(|(pos, cell)| (*pos, cell.raw.clone()))
-        .collect();
-    for (pos, raw) in formula_cells {
-        set_formula(&mut sheet, &mut deps, pos, &raw);
-    }
-    recalculate(&mut sheet, &deps);
+    SheetEngine::new(&mut sheet, &mut deps).rebuild_formulas_and_recalculate();
 
     Ok((sheet, deps))
 }
@@ -198,16 +190,7 @@ fn load_from_bytes(
     };
     let mut deps = DepGraph::new();
 
-    let formula_cells: Vec<_> = sheet
-        .cells
-        .iter()
-        .filter(|(_, cell)| cell.raw.starts_with('='))
-        .map(|(pos, cell)| (*pos, cell.raw.clone()))
-        .collect();
-    for (pos, raw) in formula_cells {
-        set_formula(&mut sheet, &mut deps, pos, &raw);
-    }
-    recalculate(&mut sheet, &deps);
+    SheetEngine::new(&mut sheet, &mut deps).rebuild_formulas_and_recalculate();
 
     Ok((sheet, deps))
 }
@@ -227,14 +210,7 @@ fn save(
 }
 
 fn apply_write(sheet: &mut Sheet, deps: &mut DepGraph, pos: CellPos, value: &str) {
-    if value.starts_with('=') {
-        set_formula(sheet, deps, pos, value);
-    } else {
-        // Drop any prior formula edges so dependents don't keep tracking this cell.
-        deps.remove(pos);
-        sheet.set_cell(pos, value);
-    }
-    mark_dirty(sheet, deps, pos);
+    SheetEngine::new(sheet, deps).set_cell_raw(pos, value);
 }
 
 /// Parse a single A1-style reference like "A1" or "AB12". 1-indexed rows.

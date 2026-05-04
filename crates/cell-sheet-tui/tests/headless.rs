@@ -159,6 +159,31 @@ fn write_formula_recalculates_dependents() {
 }
 
 #[test]
+fn write_empty_value_recalculates_dependents() {
+    let dir = tempfile::tempdir().unwrap();
+    let cell_file = "# cell v1\nsize 2 1\nlet A0 = 99\nformula A1 = =A1\n";
+    let path = cell_path(&dir, "data.cell");
+    std::fs::write(&path, cell_file).unwrap();
+
+    let out = run(&[path.to_str().unwrap(), "--write", "A1", "", "--read", "A2"]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    assert_eq!(stdout(&out), "0\n");
+}
+
+#[test]
+fn write_empty_value_preserves_requested_extent() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = cell_path(&dir, "data.cell");
+    std::fs::write(&path, "# cell v1\nsize 1 1\n").unwrap();
+
+    let out = run(&[path.to_str().unwrap(), "--write", "B2", ""]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("size 2 2"), "got: {saved:?}");
+}
+
+#[test]
 fn batched_writes_apply_in_order_and_save_once() {
     let dir = tempfile::tempdir().unwrap();
     let path = write_csv(&dir, "data.csv", ",,\n");
