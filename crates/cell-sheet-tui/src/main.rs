@@ -1,6 +1,7 @@
 mod action;
 mod app;
 mod clipboard;
+mod command_state;
 mod file_format;
 mod headless;
 mod mode;
@@ -356,18 +357,18 @@ fn run_loop(
                         Mode::Help => help_state.handle_key(key, app, grid_height),
                         Mode::Command => {
                             use action::{CommandKind, SearchDirection};
-                            let cmd_action = handle_command_key(key, &app.command_line);
-                            let search_dir = match app.command_kind {
+                            let cmd_action = handle_command_key(key, &app.command.line);
+                            let search_dir = match app.command.kind {
                                 CommandKind::Slash => Some(SearchDirection::Forward),
                                 CommandKind::Question => Some(SearchDirection::Backward),
                                 CommandKind::Colon => None,
                             };
                             match cmd_action {
                                 CommandAction::InsertChar(c) => {
-                                    app.command_line.push(c);
+                                    app.command.insert_char(c);
                                     if let Some(dir) = search_dir {
                                         Action::SearchIncremental {
-                                            pattern: app.command_line.clone(),
+                                            pattern: app.command.line.clone(),
                                             direction: dir,
                                         }
                                     } else {
@@ -375,10 +376,10 @@ fn run_loop(
                                     }
                                 }
                                 CommandAction::Backspace => {
-                                    app.command_line.pop();
+                                    app.command.backspace();
                                     if let Some(dir) = search_dir {
                                         Action::SearchIncremental {
-                                            pattern: app.command_line.clone(),
+                                            pattern: app.command.line.clone(),
                                             direction: dir,
                                         }
                                     } else {
@@ -386,22 +387,16 @@ fn run_loop(
                                     }
                                 }
                                 CommandAction::Execute(cmd) => {
-                                    let kind = app.command_kind;
+                                    let kind = app.command.kind;
                                     let is_wq =
                                         matches!(kind, CommandKind::Colon) && cmd.trim() == "wq";
-                                    // Push non-empty colon commands to history,
-                                    // avoiding consecutive duplicates.
-                                    if matches!(kind, CommandKind::Colon)
-                                        && !cmd.trim().is_empty()
-                                        && app.command_history.last().map(|s| s.as_str())
-                                            != Some(cmd.trim())
-                                    {
-                                        app.command_history.push(cmd.trim().to_string());
+                                    if matches!(kind, CommandKind::Colon) {
+                                        app.command.record_submitted_colon_command(&cmd);
+                                    } else {
+                                        app.command.reset_history_browse();
                                     }
-                                    app.command_history_idx = None;
-                                    app.command_history_scratch.clear();
                                     let parsed = submit(kind, &cmd);
-                                    app.command_line.clear();
+                                    app.command.clear_line();
                                     if is_wq {
                                         wq_pending = true;
                                     }
@@ -412,51 +407,21 @@ fn run_loop(
                                     parsed
                                 }
                                 CommandAction::Cancel => {
-                                    app.command_history_idx = None;
-                                    app.command_history_scratch.clear();
+                                    app.command.reset_history_browse();
                                     if search_dir.is_some() {
                                         Action::CancelSearch
                                     } else {
-                                        app.command_line.clear();
+                                        app.command.clear_line();
                                         Action::ChangeMode(Mode::Normal)
                                     }
                                 }
                                 CommandAction::HistoryPrev => {
-                                    if app.command_history.is_empty() {
-                                        Action::Noop
-                                    } else {
-                                        let new_idx = match app.command_history_idx {
-                                            None => {
-                                                // Save current in-progress text before browsing.
-                                                app.command_history_scratch =
-                                                    app.command_line.clone();
-                                                app.command_history.len() - 1
-                                            }
-                                            Some(i) => i.saturating_sub(1),
-                                        };
-                                        app.command_history_idx = Some(new_idx);
-                                        app.command_line = app.command_history[new_idx].clone();
-                                        Action::Noop
-                                    }
+                                    app.command.history_prev();
+                                    Action::Noop
                                 }
                                 CommandAction::HistoryNext => {
-                                    match app.command_history_idx {
-                                        None => Action::Noop,
-                                        Some(i) => {
-                                            if i + 1 < app.command_history.len() {
-                                                let new_idx = i + 1;
-                                                app.command_history_idx = Some(new_idx);
-                                                app.command_line =
-                                                    app.command_history[new_idx].clone();
-                                            } else {
-                                                // Past the newest entry — restore scratch.
-                                                app.command_history_idx = None;
-                                                app.command_line =
-                                                    app.command_history_scratch.clone();
-                                            }
-                                            Action::Noop
-                                        }
-                                    }
+                                    app.command.history_next();
+                                    Action::Noop
                                 }
                                 CommandAction::Noop => Action::Noop,
                             }
@@ -531,15 +496,14 @@ fn run_loop(
                             }
                             Mode::Command => {
                                 use action::CommandKind;
-                                app.command_history_idx = None;
-                                app.command_history_scratch.clear();
+                                app.command.reset_history_browse();
                                 if matches!(
-                                    app.command_kind,
+                                    app.command.kind,
                                     CommandKind::Slash | CommandKind::Question
                                 ) {
                                     app.process_action(Action::CancelSearch);
                                 } else {
-                                    app.command_line.clear();
+                                    app.command.clear_line();
                                     app.mode = Mode::Normal;
                                 }
                             }

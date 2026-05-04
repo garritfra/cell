@@ -110,8 +110,8 @@ pub fn render(
     let is_command = app.mode == Mode::Command;
     frame.render_widget(
         CommandLine {
-            content: &app.command_line,
-            prefix: app.command_kind.prefix(),
+            content: &app.command.line,
+            prefix: app.command.kind.prefix(),
             active: is_command,
         },
         chunks[3],
