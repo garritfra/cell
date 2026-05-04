@@ -284,8 +284,8 @@ Releases are automated with [release-plz](https://release-plz.dev/) from the
 - Merging the release PR publishes `cell-sheet-core` and `cell-sheet-tui` to
   [crates.io](https://crates.io) via trusted publishing, creates the `vX.Y.Z`
   tag, and creates a draft GitHub Release.
-- The `vX.Y.Z` tag then builds binaries for Linux (x86_64, aarch64), macOS
-  (x86_64, aarch64), and Windows (x86_64), uploads archives and SHA256
+- The same workflow run then builds binaries for Linux (x86_64, aarch64),
+  macOS (x86_64, aarch64), and Windows (x86_64), uploads archives and SHA256
   checksums, and publishes the GitHub Release.
 
 See [RELEASE.md](RELEASE.md) for maintainer instructions and failure handling.
