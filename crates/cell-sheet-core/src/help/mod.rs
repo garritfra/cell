@@ -7,6 +7,7 @@ pub enum HelpCategory {
     Visual,
     Command,
     Formula,
+    Mouse,
 }
 
 impl HelpCategory {
@@ -17,6 +18,7 @@ impl HelpCategory {
             HelpCategory::Visual => "VISUAL MODE",
             HelpCategory::Command => "COMMANDS",
             HelpCategory::Formula => "FORMULAS",
+            HelpCategory::Mouse => "MOUSE",
         }
     }
 }
@@ -49,6 +51,7 @@ impl HelpRegistry {
             VISUAL_ENTRIES,
             COMMAND_ENTRIES,
             FORMULA_ENTRIES,
+            MOUSE_ENTRIES,
         ])
     }
 
@@ -88,7 +91,7 @@ impl HelpRegistry {
     /// Return all categories that have at least one entry, in display order.
     pub fn categories(&self) -> Vec<HelpCategory> {
         use HelpCategory::*;
-        let order = [Normal, Insert, Visual, Command, Formula];
+        let order = [Normal, Insert, Visual, Command, Formula, Mouse];
         order
             .iter()
             .copied()
@@ -170,6 +173,24 @@ mod tests {
         assert!(
             registry.find(":set delimiter").is_some(),
             "missing :set delimiter"
+        );
+        assert!(registry.find("mouse").is_some(), "missing mouse");
+        assert!(
+            registry.find("mouse-click").is_some(),
+            "missing mouse-click"
+        );
+        assert!(
+            registry.find("mouse-scroll").is_some(),
+            "missing mouse-scroll"
+        );
+        assert!(registry.find("mouse-drag").is_some(), "missing mouse-drag");
+        assert!(
+            registry.find("mouse-double-click").is_some(),
+            "missing mouse-double-click"
+        );
+        assert!(
+            registry.find("mouse-bypass").is_some(),
+            "missing mouse-bypass"
         );
     }
 }

@@ -167,6 +167,34 @@ pub enum Action {
     },
     ReselectLastVisual,
     SetDelimiter(u8),
+    /// Toggle the mouse-enabled flag. The actual `Enable/DisableMouseCapture`
+    /// syscall is issued by `run_loop` after observing the flag change.
+    SetMouse(bool),
+    /// Flip `App.mouse_enabled` to its opposite. Distinct from
+    /// `SetMouse(b)` so the parser doesn't need to know the current
+    /// state.
+    ToggleMouse,
+    MouseClickCell(CellPos),
+    /// Drag in progress: extend the cursor to `pos`. The Visual selection
+    /// is set up by `run_loop` on the first drag event after the
+    /// originating `Down(Left)`; subsequent drags just move the cursor and
+    /// the existing `VisualState` re-derives the selection.
+    MouseDragTo(CellPos),
+    /// Anchor (or extend) a whole-column selection. The corresponding
+    /// VisualBlock setup happens in `run_loop` parallel to the existing
+    /// keyboard `v` flow.
+    MouseSelectColumn(usize),
+    /// Anchor (or extend) a whole-row selection. The corresponding
+    /// VisualBlock setup happens in `run_loop`.
+    MouseSelectRow(usize),
+    /// Scroll the viewport. `dy > 0` scrolls toward higher row indices
+    /// (content moves up, viewport reveals rows further down). `dx > 0`
+    /// scrolls right. The cursor is NOT moved (matches Vim's mouse
+    /// behaviour).
+    MouseScroll {
+        dx: i32,
+        dy: i32,
+    },
     SetStatus(String),
     /// Re-apply the last recorded cell-mutating operation at the current cursor.
     RepeatLastChange,

@@ -6,6 +6,7 @@ pub mod status_bar;
 
 use crate::action::Mode;
 use crate::app::App;
+use crate::mode::mouse::GridLayout;
 use cell_sheet_core::model::CellPos;
 use command_line::CommandLine;
 use formula_bar::FormulaBar;
@@ -19,7 +20,7 @@ use status_bar::StatusBar;
 
 pub fn render(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     selection: Option<(CellPos, CellPos)>,
     insert_cursor: usize,
     partial_command: Option<&str>,
@@ -74,15 +75,18 @@ pub fn render(
         }
     }
 
+    let mut grid_layout: Option<GridLayout> = None;
     frame.render_widget(
         Grid {
             sheet: &app.sheet,
             viewport: &app.viewport,
             cursor: app.cursor,
             selection,
+            layout_out: &mut grid_layout,
         },
         chunks[1],
     );
+    app.last_grid_layout = grid_layout;
 
     let file_name = app
         .file_path
@@ -112,4 +116,47 @@ pub fn render(
         },
         chunks[3],
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    #[test]
+    fn render_writes_layout_to_app_and_overwrites_on_second_call() {
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new();
+        app.sheet.set_cell((0, 0), "a");
+        app.sheet.set_cell((0, 1), "b");
+
+        terminal
+            .draw(|frame| {
+                render(frame, &mut app, None, 0, None);
+            })
+            .unwrap();
+        let first = app
+            .last_grid_layout
+            .clone()
+            .expect("layout populated after first render");
+        assert!(!first.visible_cols.is_empty());
+        assert_eq!(first.header_height, 1);
+
+        // A second render must OVERWRITE, not stack/append. Mutating the
+        // viewport between renders is the simplest way to prove it.
+        app.viewport.row_offset = 5;
+        terminal
+            .draw(|frame| {
+                render(frame, &mut app, None, 0, None);
+            })
+            .unwrap();
+        let second = app
+            .last_grid_layout
+            .as_ref()
+            .expect("layout still populated after second render");
+        assert_eq!(second.row_offset, 5);
+    }
 }

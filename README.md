@@ -178,6 +178,35 @@ Extend the selection with `hjkl` (or `[count]j` etc.), then:
 In the `:` prompt, `↑` / `↓` cycle through previously executed commands.
 
 
+## Mouse support
+
+Mouse support is **off by default** so the terminal's native text
+selection keeps working. Enable it at runtime with `:set mouse on`,
+disable it with `:set mouse off`, or flip the current state with
+`:set mouse toggle`.
+
+When enabled:
+
+- **Left-click** on a cell moves the cursor.
+- **Click + drag** inside the grid selects a Visual range.
+- **Click + drag** on a column header selects whole columns.
+- **Click + drag** on a row header selects whole rows.
+- **Scroll wheel** scrolls the viewport (cursor stays put). Horizontal
+  scroll works when the terminal emits `ScrollLeft` / `ScrollRight`
+  (commonly bound to Shift + wheel).
+- **Double-click** a cell to enter Insert mode on it.
+- **Drag past the visible edge** auto-scrolls the viewport.
+
+To copy a cell value out to your system clipboard while mouse mode is
+on, hold your terminal's bypass modifier when clicking and dragging:
+
+| Terminal | Bypass |
+| --- | --- |
+| Linux terminals (gnome-terminal, alacritty, kitty, …) | Shift |
+| Windows Terminal | Shift |
+| macOS Terminal.app, iTerm2 | Option/Alt |
+| tmux / screen | configure per their docs |
+
 ## Formulas
 
 Formulas start with `=` and support Excel-compatible syntax:

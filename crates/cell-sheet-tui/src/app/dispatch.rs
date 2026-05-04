@@ -735,6 +735,49 @@ impl App {
                 self.delimiter = d;
                 self.status_message = Some(format!("Delimiter set to '{}'", d as char));
             }
+            Action::SetMouse(b) => {
+                self.mouse_enabled = b;
+            }
+            Action::ToggleMouse => {
+                self.mouse_enabled = !self.mouse_enabled;
+            }
+            Action::MouseClickCell(pos) => {
+                self.cursor = pos;
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseDragTo(pos) => {
+                self.cursor = pos;
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseSelectColumn(col) => {
+                // Cursor stays at the top of the clicked column so the
+                // highlighted cell is where the user pointed; the visual
+                // anchor at (last_row, _) makes the selection rectangle
+                // cover the full column.
+                self.cursor = (0, col);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseSelectRow(row) => {
+                // Cursor stays at the leftmost cell of the clicked row;
+                // the visual anchor at (_, last_col) makes the selection
+                // rectangle cover the full row.
+                self.cursor = (row, 0);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseScroll { dx, dy } => {
+                if dy > 0 {
+                    self.viewport.row_offset = self.viewport.row_offset.saturating_add(dy as usize);
+                } else if dy < 0 {
+                    self.viewport.row_offset =
+                        self.viewport.row_offset.saturating_sub((-dy) as usize);
+                }
+                if dx > 0 {
+                    self.viewport.col_offset = self.viewport.col_offset.saturating_add(dx as usize);
+                } else if dx < 0 {
+                    self.viewport.col_offset =
+                        self.viewport.col_offset.saturating_sub((-dx) as usize);
+                }
+            }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
             }

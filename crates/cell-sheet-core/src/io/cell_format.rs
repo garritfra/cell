@@ -1,6 +1,33 @@
 use crate::model::{col_index_to_label, col_label_to_index, CellValue, Sheet};
 use std::io::{BufRead, BufReader, Read, Write};
 
+fn escape_cell_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn unescape_cell_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(next) = chars.next() {
+                out.push(next);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn parse_address(addr: &str) -> Option<(usize, usize)> {
     let mut col_end = 0;
     for (i, c) in addr.chars().enumerate() {
@@ -55,7 +82,7 @@ pub fn write_cell_format<W: Write>(
                     writeln!(writer, "let {} = {}", addr, cell.raw)?;
                 }
                 CellValue::Text(s) => {
-                    writeln!(writer, "label {} = \"{}\"", addr, s)?;
+                    writeln!(writer, "label {} = \"{}\"", addr, escape_cell_string(s))?;
                 }
                 CellValue::Bool(b) => {
                     writeln!(
@@ -67,7 +94,12 @@ pub fn write_cell_format<W: Write>(
                 }
                 CellValue::Empty => {}
                 CellValue::Error(_) => {
-                    writeln!(writer, "label {} = \"{}\"", addr, cell.raw)?;
+                    writeln!(
+                        writer,
+                        "label {} = \"{}\"",
+                        addr,
+                        escape_cell_string(&cell.raw)
+                    )?;
                 }
             }
         }
@@ -90,20 +122,56 @@ pub fn read_cell_format<R: Read>(reader: R) -> Result<Sheet, Box<dyn std::error:
 
         if let Some(rest) = line.strip_prefix("size ") {
             let parts: Vec<&str> = rest.split_whitespace().collect();
-            if parts.len() == 2 {
-                sheet.row_count = parts[0].parse().unwrap_or(0);
-                sheet.col_count = parts[1].parse().unwrap_or(0);
+            if parts.len() != 2 {
+                return Err(format!(
+                    "corrupted .cell file: `size` directive expects 2 fields, got {}: {:?}",
+                    parts.len(),
+                    rest
+                )
+                .into());
             }
+            // Returning the parser error instead of silently
+            // collapsing to a 0×0 sheet (issue #76 — the previous
+            // `unwrap_or(0)` made a corrupted file look like an
+            // empty document).
+            sheet.row_count = parts[0].parse().map_err(|e| {
+                format!(
+                    "corrupted .cell file: `size` row_count is not numeric ({:?}): {e}",
+                    parts[0]
+                )
+            })?;
+            sheet.col_count = parts[1].parse().map_err(|e| {
+                format!(
+                    "corrupted .cell file: `size` col_count is not numeric ({:?}): {e}",
+                    parts[1]
+                )
+            })?;
         } else if let Some(rest) = line.strip_prefix("col-width ") {
             let parts: Vec<&str> = rest.split_whitespace().collect();
-            if parts.len() == 2 {
-                let idx: usize = parts[0].parse().unwrap_or(0);
-                let width: u16 = parts[1].parse().unwrap_or(10);
-                if idx >= sheet.col_widths.len() {
-                    sheet.col_widths.resize(idx + 1, 10);
-                }
-                sheet.col_widths[idx] = width;
+            if parts.len() != 2 {
+                return Err(format!(
+                    "corrupted .cell file: `col-width` expects 2 fields, got {}: {:?}",
+                    parts.len(),
+                    rest
+                )
+                .into());
             }
+            let idx: usize = parts[0].parse().map_err(|e| {
+                format!(
+                    "corrupted .cell file: `col-width` index is not numeric ({:?}): {e}",
+                    parts[0]
+                )
+            })?;
+            let width: u16 = parts[1].parse().map_err(|e| {
+                format!(
+                    "corrupted .cell file: `col-width` width is not numeric ({:?}): {e}",
+                    parts[1]
+                )
+            })?;
+            if idx >= sheet.col_widths.len() {
+                sheet.col_widths.resize(idx + 1, 10);
+            }
+            sheet.col_widths[idx] = width;
         } else if let Some(rest) = line.strip_prefix("let ") {
             if let Some((addr_str, value_str)) = rest.split_once(" = ") {
                 if let Some(pos) = parse_address(addr_str.trim()) {
@@ -115,11 +183,11 @@ pub fn read_cell_format<R: Read>(reader: R) -> Result<Sheet, Box<dyn std::error:
                 if let Some(pos) = parse_address(addr_str.trim()) {
                     let s = value_str.trim();
                     let s = if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-                        &s[1..s.len() - 1]
+                        unescape_cell_string(&s[1..s.len() - 1])
                     } else {
-                        s
+                        s.to_string()
                     };
-                    sheet.set_cell(pos, s);
+                    sheet.set_cell(pos, &s);
                 }
             }
         } else if let Some(rest) = line.strip_prefix("formula ") {
@@ -209,6 +277,87 @@ mod tests {
         assert_eq!(
             sheet.get_cell((0, 0)).unwrap().value,
             CellValue::Number(3.15)
+        );
+    }
+
+    // Regression for https://github.com/garritfra/cell/issues/76. A
+    // corrupted `.cell` file with a non-numeric `size` header used to
+    // load as a 0×0 sheet — looked like an empty document. Now the
+    // parser surfaces a clear "corrupted .cell file" error so the TUI
+    // can show it in the status bar instead of silently truncating
+    // the user's data.
+    #[test]
+    fn read_size_header_with_non_numeric_row_count_returns_error() {
+        let data = "size NaN 5\n";
+        let err = read_cell_format(data.as_bytes())
+            .expect_err("non-numeric size header must produce an error, not a 0x0 sheet");
+        let msg = format!("{err}");
+        assert!(msg.contains("corrupted .cell file"), "got: {msg}");
+        assert!(msg.contains("row_count"), "got: {msg}");
+    }
+
+    #[test]
+    fn read_size_header_with_non_numeric_col_count_returns_error() {
+        let data = "size 5 NaN\n";
+        let err = read_cell_format(data.as_bytes())
+            .expect_err("non-numeric col_count must produce an error");
+        let msg = format!("{err}");
+        assert!(msg.contains("corrupted .cell file"), "got: {msg}");
+        assert!(msg.contains("col_count"), "got: {msg}");
+    }
+
+    #[test]
+    fn read_size_header_with_wrong_arity_returns_error() {
+        let data = "size 5\n";
+        let err = read_cell_format(data.as_bytes())
+            .expect_err("size header with one field must produce an error");
+        assert!(format!("{err}").contains("expects 2 fields"));
+    }
+
+    #[test]
+    fn read_col_width_with_non_numeric_index_returns_error() {
+        let data = "size 1 1\ncol-width foo 12\n";
+        let err =
+            read_cell_format(data.as_bytes()).expect_err("non-numeric col-width index must error");
+        assert!(format!("{err}").contains("col-width"));
+    }
+
+    #[test]
+    fn roundtrip_label_with_embedded_quote() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "hello\"world");
+        let mut buf = Vec::new();
+        write_cell_format(&sheet, &mut buf).unwrap();
+        let sheet2 = read_cell_format(buf.as_slice()).unwrap();
+        assert_eq!(
+            sheet2.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("hello\"world".into())
+        );
+    }
+
+    #[test]
+    fn roundtrip_label_with_embedded_backslash() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "hello\\world");
+        let mut buf = Vec::new();
+        write_cell_format(&sheet, &mut buf).unwrap();
+        let sheet2 = read_cell_format(buf.as_slice()).unwrap();
+        assert_eq!(
+            sheet2.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("hello\\world".into())
+        );
+    }
+
+    #[test]
+    fn roundtrip_label_with_quote_and_backslash() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "say \"hi\\\" to me");
+        let mut buf = Vec::new();
+        write_cell_format(&sheet, &mut buf).unwrap();
+        let sheet2 = read_cell_format(buf.as_slice()).unwrap();
+        assert_eq!(
+            sheet2.get_cell((0, 0)).unwrap().value,
+            CellValue::Text("say \"hi\\\" to me".into())
         );
     }
 }
