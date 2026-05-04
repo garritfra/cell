@@ -1,5 +1,5 @@
 use super::{apply_case_op, App};
-use crate::action::{Action, CaseOp, CommandKind, Direction, Mode, SearchDirection};
+use crate::action::{Action, CaseOp, CommandKind, Direction, Mode};
 use crate::clipboard::Register;
 use crate::file_format::FileFormat;
 use crate::undo::UndoEntry;
@@ -230,99 +230,15 @@ impl App {
                     self.status_message = Some("No file name".into());
                 }
             }
-            Action::Search { pattern, direction } => {
-                if pattern.is_empty() {
-                    // Empty submit: restore cursor to where the prompt opened
-                    // (matches vim's behavior of "no match → no movement"),
-                    // and don't overwrite an existing pattern.
-                    if let Some(origin) = self.search_origin.take() {
-                        self.cursor = origin;
-                        self.viewport.ensure_visible(self.cursor);
-                    }
-                    return;
-                }
-                self.record_jump();
-                self.search_pattern = Some(pattern.clone());
-                let forward = direction == SearchDirection::Forward;
-                // If a prompt is open (origin set), commit at the incremental
-                // position by re-running the search from origin, including
-                // origin as a candidate. Without an open prompt (e.g.
-                // `Action::Search` dispatched directly), behave like vim's
-                // `/<pattern>`: step past the current cell.
-                let (origin, include_origin) = match self.search_origin.take() {
-                    Some(o) => (o, true),
-                    None => (self.cursor, false),
-                };
-                if !self.find_from(&pattern, forward, origin, include_origin) {
-                    if include_origin {
-                        self.cursor = origin;
-                        self.viewport.ensure_visible(self.cursor);
-                    }
-                    self.status_message = Some(format!("Pattern not found: {}", pattern));
-                }
-            }
-            Action::EnterSearch(direction) => {
-                self.command_line.clear();
-                self.command_kind = match direction {
-                    SearchDirection::Forward => CommandKind::Slash,
-                    SearchDirection::Backward => CommandKind::Question,
-                };
-                self.search_origin = Some(self.cursor);
-                self.command_history_idx = None;
-                self.command_history_scratch.clear();
-                self.mode = Mode::Command;
-            }
-            Action::SearchIncremental { pattern, direction } => {
-                let Some(origin) = self.search_origin else {
-                    return;
-                };
-                if pattern.is_empty() {
-                    self.cursor = origin;
-                    self.viewport.ensure_visible(self.cursor);
-                    return;
-                }
-                let forward = direction == SearchDirection::Forward;
-                if !self.find_from(&pattern, forward, origin, true) {
-                    // No match: snap back to origin so the user sees they're
-                    // not on a stale earlier match.
-                    self.cursor = origin;
-                    self.viewport.ensure_visible(self.cursor);
-                }
-            }
-            Action::CancelSearch => {
-                if let Some(origin) = self.search_origin.take() {
-                    self.cursor = origin;
-                    self.viewport.ensure_visible(self.cursor);
-                }
-                self.command_line.clear();
-                self.mode = Mode::Normal;
-            }
-            Action::FindCharInRow {
-                ch,
-                forward,
-                inclusive,
-            } => {
-                self.last_find = Some((ch, forward, inclusive));
-                self.find_char_in_row(ch, forward, inclusive);
-            }
-            Action::RepeatFind { reversed } => {
-                if let Some((ch, forward, inclusive)) = self.last_find {
-                    let dir = if reversed { !forward } else { forward };
-                    self.find_char_in_row(ch, dir, inclusive);
-                }
-            }
-            Action::SearchNext => {
-                if self.search_pattern.is_some() {
-                    self.record_jump();
-                    self.find_next(true);
-                }
-            }
-            Action::SearchPrev => {
-                if self.search_pattern.is_some() {
-                    self.record_jump();
-                    self.find_next(false);
-                }
-            }
+            action @ (Action::Search { .. }
+            | Action::EnterSearch(_)
+            | Action::SearchIncremental { .. }
+            | Action::CancelSearch
+            | Action::FindCharInRow { .. }
+            | Action::RepeatFind { .. }
+            | Action::SearchNext
+            | Action::SearchPrev
+            | Action::SearchCellValue { .. }) => self.process_search_action(action),
             Action::Sort { col, ascending } => {
                 cell_sheet_core::engine::SheetEngine::new(&mut self.sheet, &mut self.deps)
                     .sort_by_column_and_recalculate(col, ascending);
@@ -710,25 +626,6 @@ impl App {
             Action::ReselectLastVisual => {
                 // Re-entry into visual mode is orchestrated in main.rs because
                 // it owns the live `VisualState`. App only stores the snapshot.
-            }
-            Action::SearchCellValue { backward } => {
-                let pattern = self
-                    .sheet
-                    .get_cell(self.cursor)
-                    .map(|c| c.value.to_string());
-                if let Some(p) = pattern.filter(|s| !s.is_empty()) {
-                    let direction = if backward {
-                        crate::action::SearchDirection::Backward
-                    } else {
-                        crate::action::SearchDirection::Forward
-                    };
-                    self.process_action(Action::Search {
-                        pattern: p,
-                        direction,
-                    });
-                } else {
-                    self.status_message = Some("No string under cursor".into());
-                }
             }
             Action::SetDelimiter(d) => {
                 self.delimiter = d;
