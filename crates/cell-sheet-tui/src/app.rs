@@ -1,5 +1,6 @@
 use crate::action::{Action, CaseOp, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
+use crate::mode::mouse::GridLayout;
 use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
@@ -41,6 +42,13 @@ pub struct App {
     pub should_quit: bool,
     pub insert_buffer: String,
     pub delimiter: u8,
+    /// Off by default. Toggled by `:set mouse on|off|toggle`. When true,
+    /// the run_loop has issued `EnableMouseCapture` to the terminal and
+    /// is routing `Event::Mouse` to `mode::mouse::handle_mouse_event`.
+    pub mouse_enabled: bool,
+    /// Geometry from the most recent grid render, used by mouse hit-testing
+    /// on the next event. `None` until the first frame is drawn.
+    pub last_grid_layout: Option<GridLayout>,
     pub help_scroll: usize,
     pub help_topic: Option<String>,
     pub help_registry: HelpRegistry,
@@ -94,6 +102,8 @@ impl App {
             should_quit: false,
             insert_buffer: String::new(),
             delimiter: b',',
+            mouse_enabled: false,
+            last_grid_layout: None,
             help_scroll: 0,
             help_topic: None,
             help_registry: HelpRegistry::new(),
@@ -865,6 +875,49 @@ impl App {
             Action::SetDelimiter(d) => {
                 self.delimiter = d;
                 self.status_message = Some(format!("Delimiter set to '{}'", d as char));
+            }
+            Action::SetMouse(b) => {
+                self.mouse_enabled = b;
+            }
+            Action::ToggleMouse => {
+                self.mouse_enabled = !self.mouse_enabled;
+            }
+            Action::MouseClickCell(pos) => {
+                self.cursor = pos;
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseDragTo(pos) => {
+                self.cursor = pos;
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseSelectColumn(col) => {
+                // Cursor stays at the top of the clicked column so the
+                // highlighted cell is where the user pointed; the visual
+                // anchor at (last_row, _) makes the selection rectangle
+                // cover the full column.
+                self.cursor = (0, col);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseSelectRow(row) => {
+                // Cursor stays at the leftmost cell of the clicked row;
+                // the visual anchor at (_, last_col) makes the selection
+                // rectangle cover the full row.
+                self.cursor = (row, 0);
+                self.viewport.ensure_visible(self.cursor);
+            }
+            Action::MouseScroll { dx, dy } => {
+                if dy > 0 {
+                    self.viewport.row_offset = self.viewport.row_offset.saturating_add(dy as usize);
+                } else if dy < 0 {
+                    self.viewport.row_offset =
+                        self.viewport.row_offset.saturating_sub((-dy) as usize);
+                }
+                if dx > 0 {
+                    self.viewport.col_offset = self.viewport.col_offset.saturating_add(dx as usize);
+                } else if dx < 0 {
+                    self.viewport.col_offset =
+                        self.viewport.col_offset.saturating_sub((-dx) as usize);
+                }
             }
             Action::SetStatus(msg) => {
                 self.status_message = Some(msg);
@@ -2514,6 +2567,35 @@ mod tests {
         let mut app = App::new();
         app.process_action(Action::SetDelimiter(b'\t'));
         assert_eq!(app.delimiter, b'\t');
+    }
+
+    #[test]
+    fn set_mouse_action_writes_flag() {
+        let mut app = App::new();
+        assert!(!app.mouse_enabled);
+        app.process_action(Action::SetMouse(true));
+        assert!(app.mouse_enabled);
+        app.process_action(Action::SetMouse(false));
+        assert!(!app.mouse_enabled);
+    }
+
+    #[test]
+    fn toggle_mouse_flips_flag_from_either_state() {
+        let mut app = App::new();
+        assert!(!app.mouse_enabled);
+        app.process_action(Action::ToggleMouse);
+        assert!(app.mouse_enabled);
+        app.process_action(Action::ToggleMouse);
+        assert!(!app.mouse_enabled);
+    }
+
+    #[test]
+    fn mouse_click_cell_moves_cursor_and_ensures_visible() {
+        let mut app = App::new();
+        app.process_action(Action::MouseClickCell((50, 5)));
+        assert_eq!(app.cursor, (50, 5));
+        // Viewport must scroll to keep the cursor in view.
+        assert!(app.viewport.row_offset > 0);
     }
 
     #[test]

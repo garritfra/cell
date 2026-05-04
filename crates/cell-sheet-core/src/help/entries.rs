@@ -727,3 +727,81 @@ pub static FORMULA_ENTRIES: &[HelpEntry] = &[
         detail: "Returns one value if a condition is true, another if false.\n\nUsage: =IF(condition, value_if_true, value_if_false)\n\nExamples:\n  =IF(A1>10, \"big\", \"small\")\n  =IF(B2, C2, D2)",
     },
 ];
+
+pub static MOUSE_ENTRIES: &[HelpEntry] = &[
+    HelpEntry {
+        tags: &["mouse", ":set mouse"],
+        category: HelpCategory::Mouse,
+        summary: "Enable / disable mouse support",
+        detail: "Mouse support is OFF by default. Toggle at runtime:\n\
+                 \n\
+                 :set mouse on        Enable mouse capture.\n\
+                 :set mouse off       Disable mouse capture.\n\
+                 :set mouse toggle    Flip the current state.\n\
+                 \n\
+                 When mouse mode is on, the terminal stops doing native\n\
+                 text selection. Hold your terminal's bypass modifier to\n\
+                 fall back to native selection for copy:\n\
+                 \n\
+                 - Linux & Windows Terminal: Shift\n\
+                 - macOS Terminal.app and iTerm2: Option/Alt\n\
+                 - tmux/screen: see your terminal's docs",
+    },
+    HelpEntry {
+        tags: &["mouse-click", "click"],
+        category: HelpCategory::Mouse,
+        summary: "Left-click moves the cursor",
+        detail: "Left-click on a grid cell moves the cursor there. From\n\
+                 Insert mode the in-progress edit is committed first;\n\
+                 from Command mode the prompt is cancelled; from Visual\n\
+                 the selection is exited.\n\
+                 \n\
+                 Click on the formula bar, status bar, or padding around\n\
+                 the grid is a no-op and never commits an edit.",
+    },
+    HelpEntry {
+        tags: &["mouse-drag", "drag"],
+        category: HelpCategory::Mouse,
+        summary: "Click + drag selects a range",
+        detail: "Drag inside the grid: enters Visual mode and extends the\n\
+                 selection from the click cell to the current cell.\n\
+                 \n\
+                 Drag on a column header: selects whole columns.\n\
+                 Drag on a row header: selects whole rows.\n\
+                 \n\
+                 Dragging a cell selection past the visible edge auto-\n\
+                 scrolls the viewport one row/column per drag event.",
+    },
+    HelpEntry {
+        tags: &["mouse-scroll", "scroll-wheel", "wheel"],
+        category: HelpCategory::Mouse,
+        summary: "Scroll wheel scrolls the viewport",
+        detail: "The scroll wheel scrolls the viewport up or down by 3\n\
+                 rows. The cursor does not move, even if it scrolls out\n\
+                 of view (matches Vim's mouse behaviour).\n\
+                 \n\
+                 Horizontal scroll (Shift+wheel on most terminals)\n\
+                 scrolls the viewport left or right when the terminal\n\
+                 emits ScrollLeft / ScrollRight events.",
+    },
+    HelpEntry {
+        tags: &["mouse-double-click", "double-click", "edit-cell"],
+        category: HelpCategory::Mouse,
+        summary: "Double-click enters Insert mode",
+        detail: "Two left-clicks on the same cell within ~400ms enter\n\
+                 Insert mode on that cell. A second click on a different\n\
+                 cell, or after the threshold, is treated as a fresh\n\
+                 single click.",
+    },
+    HelpEntry {
+        tags: &["mouse-bypass", "shift-click"],
+        category: HelpCategory::Mouse,
+        summary: "Shift+click bypasses mouse capture",
+        detail: "Holding Shift while clicking is treated as a no-op by\n\
+                 cell, allowing the terminal's native text selection to\n\
+                 take over. Use this to copy a cell value or formula\n\
+                 string out to your system clipboard. (On macOS\n\
+                 Terminal.app and iTerm2 the bypass modifier is\n\
+                 typically Option/Alt — check your terminal settings.)",
+    },
+];

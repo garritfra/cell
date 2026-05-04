@@ -81,6 +81,15 @@ pub fn parse_command(input: &str) -> Action {
         } else {
             Action::ShowHelp(Some(topic.to_string()))
         }
+    } else if input == "set mouse" {
+        Action::SetStatus("Usage: :set mouse on|off|toggle".into())
+    } else if let Some(rest) = input.strip_prefix("set mouse ") {
+        match rest.trim() {
+            "on" => Action::SetMouse(true),
+            "off" => Action::SetMouse(false),
+            "toggle" => Action::ToggleMouse,
+            _ => Action::SetStatus("Usage: :set mouse on|off|toggle".into()),
+        }
     } else {
         Action::Noop
     }
@@ -291,6 +300,41 @@ mod tests {
             parse_command("set delimiter=\0"),
             Action::SetStatus(_)
         ));
+    }
+
+    #[test]
+    fn parse_set_mouse_on() {
+        assert_eq!(parse_command("set mouse on"), Action::SetMouse(true));
+    }
+
+    #[test]
+    fn parse_set_mouse_off() {
+        assert_eq!(parse_command("set mouse off"), Action::SetMouse(false));
+    }
+
+    #[test]
+    fn parse_set_mouse_bogus_returns_status_error() {
+        let Action::SetStatus(msg) = parse_command("set mouse bogus") else {
+            panic!("expected SetStatus");
+        };
+        assert!(msg.contains("set mouse"), "got: {msg}");
+    }
+
+    #[test]
+    fn parse_set_mouse_toggle() {
+        assert_eq!(parse_command("set mouse toggle"), Action::ToggleMouse);
+    }
+
+    #[test]
+    fn parse_set_mousepad_is_not_set_mouse() {
+        // Ensure `set mouse` doesn't swallow longer commands.
+        assert!(matches!(parse_command("set mousepad"), Action::Noop));
+    }
+
+    #[test]
+    fn parse_set_mouse_extra_whitespace() {
+        assert_eq!(parse_command("set mouse   on"), Action::SetMouse(true));
+        assert_eq!(parse_command("set mouse  toggle"), Action::ToggleMouse);
     }
 
     fn key(code: KeyCode) -> KeyEvent {
