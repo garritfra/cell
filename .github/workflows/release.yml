@@ -2,19 +2,71 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
   contents: write
   id-token: write
+  pull-requests: write
 
 env:
   CARGO_TERM_COLOR: always
   BINARY_NAME: cell
 
 jobs:
+  release-plz-release:
+    name: Release-plz release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish release
+        uses: release-plz/action@v0.5.128
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-plz-pr:
+    name: Release-plz PR
+    if: github.ref == 'refs/heads/main'
+    needs: release-plz-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Open or update release PR
+        uses: release-plz/action@v0.5.128
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
     name: Build (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,29 +107,41 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p cell-sheet-tui
+        run: cargo build --locked --release --target ${{ matrix.target }} -p cell-sheet-tui
 
       - name: Package (unix)
         if: matrix.archive == 'tar.gz'
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz ${{ env.BINARY_NAME }}
+          mkdir -p dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}/
+          cp README.md CHANGELOG.md LICENSE dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}/
+          tar czf ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz -C dist ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}
+          shasum -a 256 ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz > ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
 
       - name: Package (windows)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" -DestinationPath "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          $dist = "dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $dist
+          Copy-Item "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" $dist
+          Copy-Item README.md,CHANGELOG.md,LICENSE $dist
+          Compress-Archive -Path $dist -DestinationPath "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          $hash = (Get-FileHash "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip" | Out-File -Encoding ascii "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip.sha256"
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
           path: ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.*
 
-  release:
-    name: Create Release
+  upload-artifacts:
+    name: Upload release artifacts
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -86,32 +150,22 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release
-        run: gh release create ${{ github.ref_name }} artifacts/* --generate-notes
+      - name: Wait for release-plz draft
+        run: |
+          for attempt in {1..30}; do
+            if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "release ${{ github.ref_name }} was not created by release-plz" >&2
+          exit 1
         env:
           GH_TOKEN: ${{ github.token }}
 
-  publish:
-    name: Publish to crates.io
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: rust-lang/crates-io-auth-action@v1.0.4
-        id: auth
-
-      - name: Publish cell-sheet-core
-        run: cargo publish -p cell-sheet-core
+      - name: Upload release artifacts
+        run: |
+          gh release upload "${{ github.ref_name }}" artifacts/* --clobber
+          gh release edit "${{ github.ref_name }}" --draft=false
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish cell-sheet-tui
-        run: cargo publish -p cell-sheet-tui
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          GH_TOKEN: ${{ github.token }}

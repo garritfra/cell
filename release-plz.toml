@@ -1,0 +1,16 @@
+[workspace]
+release_always = false
+changelog_update = false
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "cell-sheet-tui"
+changelog_update = true
+changelog_path = "./CHANGELOG.md"
+changelog_include = ["cell-sheet-core"]
+git_tag_name = "v{{ version }}"
+git_tag_enable = true
+git_release_enable = true
+git_release_name = "v{{ version }}"
+git_release_draft = true
