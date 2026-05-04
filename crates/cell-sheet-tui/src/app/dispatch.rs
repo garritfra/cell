@@ -2,7 +2,6 @@ use super::{apply_case_op, App, FileFormat};
 use crate::action::{Action, CaseOp, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
 use crate::undo::UndoEntry;
-use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula};
 use cell_sheet_core::model::CellPos;
 
 impl App {
@@ -36,14 +35,9 @@ impl App {
                     old_raw,
                     new_raw: raw.clone(),
                 });
-                if raw.starts_with('=') {
-                    set_formula(&mut self.sheet, &mut self.deps, pos, &raw);
-                } else {
-                    self.sheet.set_cell(pos, &raw);
-                }
-                mark_dirty(&mut self.sheet, &self.deps, pos);
+                self.set_cell_raw(pos, &raw);
                 if self.batch_depth == 0 {
-                    recalculate(&mut self.sheet, &self.deps);
+                    self.recalculate();
                 }
                 self.dirty = true;
                 self.last_change = Some(Action::EditCell(pos, raw));
@@ -84,7 +78,10 @@ impl App {
                         old_raw,
                         new_raw: String::new(),
                     });
-                    self.sheet.clear_cell(pos);
+                    self.write_cell_raw(pos, "");
+                    if self.batch_depth == 0 {
+                        self.recalculate();
+                    }
                     self.dirty = true;
                 }
                 self.last_change = Some(Action::ClearCell(pos));
@@ -101,7 +98,10 @@ impl App {
                         old_raw,
                         new_raw: String::new(),
                     });
-                    self.sheet.clear_cell(pos);
+                    self.write_cell_raw(pos, "");
+                    if self.batch_depth == 0 {
+                        self.recalculate();
+                    }
                     self.dirty = true;
                 }
                 self.insert_buffer = String::new();
@@ -326,7 +326,8 @@ impl App {
                 }
             }
             Action::Sort { col, ascending } => {
-                self.sheet.sort_by_column(col, ascending);
+                cell_sheet_core::engine::SheetEngine::new(&mut self.sheet, &mut self.deps)
+                    .sort_by_column_and_recalculate(col, ascending);
                 self.dirty = true;
                 self.status_message = Some(format!(
                     "Sorted by column {} {}",
@@ -812,9 +813,8 @@ impl App {
                         old_raw: raw,
                         new_raw: new_raw.clone(),
                     });
-                    self.sheet.set_cell(pos, &new_raw);
-                    mark_dirty(&mut self.sheet, &self.deps, pos);
-                    recalculate(&mut self.sheet, &self.deps);
+                    self.set_cell_raw(pos, &new_raw);
+                    self.recalculate();
                     self.dirty = true;
                 }
                 self.last_change = Some(Action::CaseOpCell { pos, op });
@@ -843,10 +843,9 @@ impl App {
                 }
                 if !changes.is_empty() {
                     for (pos, _, new_raw) in &changes {
-                        self.sheet.set_cell(*pos, new_raw);
-                        mark_dirty(&mut self.sheet, &self.deps, *pos);
+                        self.set_cell_raw(*pos, new_raw);
                     }
-                    recalculate(&mut self.sheet, &self.deps);
+                    self.recalculate();
                     self.undo_stack.push(UndoEntry::MultiCellEdit { changes });
                     self.dirty = true;
                 }
@@ -864,9 +863,8 @@ impl App {
                             old_raw: raw,
                             new_raw: new_raw.clone(),
                         });
-                        self.sheet.set_cell(pos, &new_raw);
-                        mark_dirty(&mut self.sheet, &self.deps, pos);
-                        recalculate(&mut self.sheet, &self.deps);
+                        self.set_cell_raw(pos, &new_raw);
+                        self.recalculate();
                         self.dirty = true;
                     }
                     // text or empty string: no-op

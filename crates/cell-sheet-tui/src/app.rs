@@ -6,7 +6,8 @@ use crate::mode::mouse::GridLayout;
 use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
 use crate::viewport::Viewport;
-use cell_sheet_core::formula::deps::{mark_dirty, recalculate, set_formula, DepGraph};
+use cell_sheet_core::engine::SheetEngine;
+use cell_sheet_core::formula::deps::DepGraph;
 use cell_sheet_core::help::HelpRegistry;
 use cell_sheet_core::model::{CellPos, Sheet};
 use std::collections::HashMap;
@@ -368,7 +369,7 @@ impl App {
                 let raw = if redo { new_raw } else { old_raw };
                 self.write_cell_raw(*pos, raw);
                 if self.batch_depth == 0 {
-                    recalculate(&mut self.sheet, &self.deps);
+                    self.recalculate();
                 }
             }
             UndoEntry::MultiCellEdit { changes } => {
@@ -399,8 +400,16 @@ impl App {
         }
         self.batch_depth -= 1;
         if self.batch_depth == 0 {
-            recalculate(&mut self.sheet, &self.deps);
+            self.recalculate();
         }
+    }
+
+    fn recalculate(&mut self) {
+        SheetEngine::new(&mut self.sheet, &mut self.deps).recalculate();
+    }
+
+    fn set_cell_raw(&mut self, pos: CellPos, raw: &str) {
+        SheetEngine::new(&mut self.sheet, &mut self.deps).set_cell_raw(pos, raw);
     }
 
     /// Write `raw` into `pos`, keeping the dep graph consistent and marking
@@ -410,16 +419,7 @@ impl App {
     /// - formula  → register/replace dependencies
     /// - value    → drop any stale graph entry from a prior formula
     fn write_cell_raw(&mut self, pos: CellPos, raw: &str) {
-        if raw.is_empty() {
-            self.sheet.clear_cell(pos);
-            self.deps.remove(pos);
-        } else if raw.starts_with('=') {
-            set_formula(&mut self.sheet, &mut self.deps, pos, raw);
-        } else {
-            self.sheet.set_cell(pos, raw);
-            self.deps.remove(pos);
-        }
-        mark_dirty(&mut self.sheet, &self.deps, pos);
+        SheetEngine::new(&mut self.sheet, &mut self.deps).write_cell_raw(pos, raw);
     }
 }
 
@@ -2005,6 +2005,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn clear_cell_updates_dependents() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 1), "99".into()));
+        app.process_action(Action::EditCell((0, 0), "=B1".into()));
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).unwrap().value,
+            cell_sheet_core::model::CellValue::Number(99.0)
+        );
+        app.process_action(Action::ClearCell((0, 1)));
+        assert_eq!(
+            app.sheet.get_cell((0, 0)).map(|c| c.value.clone()),
+            Some(cell_sheet_core::model::CellValue::Number(0.0))
+        );
+    }
+
     // ── DeleteRow recalculation ─────────────────────────────────────────────
 
     #[test]
@@ -2042,6 +2058,25 @@ mod tests {
             val,
             Some(cell_sheet_core::model::CellValue::Number(12.0)),
             "formula depending on deleted rows must not keep stale value"
+        );
+    }
+
+    #[test]
+    fn sort_rebuilds_formula_dependencies() {
+        let mut app = App::new();
+        app.process_action(Action::EditCell((0, 0), "2".into()));
+        app.process_action(Action::EditCell((1, 0), "1".into()));
+        app.process_action(Action::EditCell((0, 1), "=A1*10".into()));
+
+        app.process_action(Action::Sort {
+            col: 0,
+            ascending: true,
+        });
+        app.process_action(Action::EditCell((0, 0), "3".into()));
+
+        assert_eq!(
+            app.sheet.get_cell((1, 1)).map(|c| c.value.clone()),
+            Some(cell_sheet_core::model::CellValue::Number(30.0))
         );
     }
 

@@ -162,7 +162,7 @@ fn load_file(
     path: &std::path::Path,
     explicit_delimiter: Option<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use cell_sheet_core::formula::deps::{recalculate, set_formula};
+    use cell_sheet_core::engine::SheetEngine;
 
     let ext = path
         .extension()
@@ -198,18 +198,7 @@ fn load_file(
 
     app.file_path = Some(path.to_path_buf());
 
-    // Register formulas in the dependency graph and evaluate them.
-    let formula_cells: Vec<_> = app
-        .sheet
-        .cells
-        .iter()
-        .filter(|(_, cell)| cell.raw.starts_with('='))
-        .map(|(pos, cell)| (*pos, cell.raw.clone()))
-        .collect();
-    for (pos, raw) in formula_cells {
-        set_formula(&mut app.sheet, &mut app.deps, pos, &raw);
-    }
-    recalculate(&mut app.sheet, &app.deps);
+    SheetEngine::new(&mut app.sheet, &mut app.deps).rebuild_formulas_and_recalculate();
 
     Ok(())
 }
@@ -219,7 +208,7 @@ fn load_stdin_data(
     data: Vec<u8>,
     explicit_delimiter: Option<u8>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use cell_sheet_core::formula::deps::{recalculate, set_formula};
+    use cell_sheet_core::engine::SheetEngine;
 
     // Detect the native .cell format by its magic header. Anything else is
     // treated as CSV/TSV with delimiter sniffing (or an explicit override).
@@ -239,17 +228,7 @@ fn load_stdin_data(
     }
     // file_path stays None — unnamed buffer; :w <path> still works to save
 
-    let formula_cells: Vec<_> = app
-        .sheet
-        .cells
-        .iter()
-        .filter(|(_, cell)| cell.raw.starts_with('='))
-        .map(|(pos, cell)| (*pos, cell.raw.clone()))
-        .collect();
-    for (pos, raw) in formula_cells {
-        set_formula(&mut app.sheet, &mut app.deps, pos, &raw);
-    }
-    recalculate(&mut app.sheet, &app.deps);
+    SheetEngine::new(&mut app.sheet, &mut app.deps).rebuild_formulas_and_recalculate();
 
     Ok(())
 }
