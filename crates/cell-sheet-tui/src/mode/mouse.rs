@@ -838,22 +838,21 @@ mod tests {
 
         let mut app = App::new();
         app.mode = Mode::Command;
-        app.command_kind = CommandKind::Colon;
-        app.command_line = "se".into();
-        app.command_history_idx = Some(0);
-        app.command_history_scratch = "abc".into();
+        app.command.enter(CommandKind::Colon);
+        app.command.line = "se".into();
+        app.command.history_idx = Some(0);
+        app.command.history_scratch = "abc".into();
 
         // The mouse-cancel branch (colon path):
-        app.command_history_idx = None;
-        app.command_history_scratch.clear();
-        app.command_line.clear();
+        app.command.reset_history_browse();
+        app.command.clear_line();
         app.mode = Mode::Normal;
         app.process_action(Action::MouseClickCell((1, 1)));
 
         assert_eq!(app.mode, Mode::Normal);
-        assert!(app.command_line.is_empty());
-        assert!(app.command_history_idx.is_none());
-        assert!(app.command_history_scratch.is_empty());
+        assert!(app.command.line.is_empty());
+        assert!(app.command.history_idx.is_none());
+        assert!(app.command.history_scratch.is_empty());
         assert_eq!(app.cursor, (1, 1));
     }
 

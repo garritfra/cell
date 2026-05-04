@@ -52,10 +52,7 @@ impl App {
                         .unwrap_or_default();
                 }
                 if mode == Mode::Command {
-                    self.command_kind = CommandKind::Colon;
-                    self.command_line.clear();
-                    self.command_history_idx = None;
-                    self.command_history_scratch.clear();
+                    self.command.enter(CommandKind::Colon);
                 }
                 self.mode = mode;
             }

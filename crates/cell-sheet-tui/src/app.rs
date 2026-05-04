@@ -1,7 +1,8 @@
 mod dispatch;
 
-use crate::action::{Action, CaseOp, CommandKind, Mode};
+use crate::action::{Action, CaseOp, Mode};
 use crate::clipboard::Register;
+use crate::command_state::CommandState;
 use crate::file_format::FileFormat;
 use crate::mode::mouse::GridLayout;
 use crate::mode::visual::VisualKind;
@@ -23,8 +24,7 @@ pub struct App {
     pub mode: Mode,
     pub register: Option<Register>,
     pub undo_stack: UndoStack,
-    pub command_line: String,
-    pub command_kind: CommandKind,
+    pub command: CommandState,
     pub status_message: Option<String>,
     pub search: SearchState,
     pub file_path: Option<PathBuf>,
@@ -51,14 +51,6 @@ pub struct App {
     /// When > 0, `EditCell` skips `recalculate`; `commit_batch` triggers it
     /// once when the outermost batch is closed.
     batch_depth: u32,
-    /// Previously executed colon commands, oldest first.
-    pub command_history: Vec<String>,
-    /// Index into `command_history` while the user is cycling with ↑/↓.
-    /// `None` means the user is not currently browsing history.
-    pub command_history_idx: Option<usize>,
-    /// The in-progress command line saved when the user first presses ↑,
-    /// restored when they press ↓ past the most recent entry.
-    pub command_history_scratch: String,
     pub last_change: Option<Action>,
 }
 
@@ -81,8 +73,7 @@ impl App {
             mode: Mode::Normal,
             register: None,
             undo_stack: UndoStack::new(),
-            command_line: String::new(),
-            command_kind: CommandKind::Colon,
+            command: CommandState::default(),
             status_message: None,
             search: SearchState::default(),
             file_path: None,
@@ -101,9 +92,6 @@ impl App {
             jump_idx: 0,
             last_visual: None,
             batch_depth: 0,
-            command_history: Vec::new(),
-            command_history_idx: None,
-            command_history_scratch: String::new(),
             last_change: None,
         }
     }
@@ -807,8 +795,8 @@ mod tests {
         let mut app = App::new();
         app.process_action(Action::EnterSearch(SearchDirection::Forward));
         assert_eq!(app.mode, Mode::Command);
-        assert_eq!(app.command_kind, CommandKind::Slash);
-        assert!(app.command_line.is_empty());
+        assert_eq!(app.command.kind, CommandKind::Slash);
+        assert!(app.command.line.is_empty());
     }
 
     #[test]
@@ -817,7 +805,7 @@ mod tests {
         let mut app = App::new();
         app.process_action(Action::EnterSearch(SearchDirection::Backward));
         assert_eq!(app.mode, Mode::Command);
-        assert_eq!(app.command_kind, CommandKind::Question);
+        assert_eq!(app.command.kind, CommandKind::Question);
     }
 
     #[test]
@@ -828,7 +816,7 @@ mod tests {
         app.process_action(Action::EnterSearch(SearchDirection::Forward));
         app.process_action(Action::ChangeMode(Mode::Normal));
         app.process_action(Action::ChangeMode(Mode::Command));
-        assert_eq!(app.command_kind, CommandKind::Colon);
+        assert_eq!(app.command.kind, CommandKind::Colon);
     }
 
     #[test]

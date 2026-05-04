@@ -49,14 +49,12 @@ impl App {
                 }
             }
             Action::EnterSearch(direction) => {
-                self.command_line.clear();
-                self.command_kind = match direction {
+                let kind = match direction {
                     SearchDirection::Forward => CommandKind::Slash,
                     SearchDirection::Backward => CommandKind::Question,
                 };
+                self.command.enter(kind);
                 self.search.origin = Some(self.cursor);
-                self.command_history_idx = None;
-                self.command_history_scratch.clear();
                 self.mode = Mode::Command;
             }
             Action::SearchIncremental { pattern, direction } => {
@@ -81,7 +79,7 @@ impl App {
                     self.cursor = origin;
                     self.viewport.ensure_visible(self.cursor);
                 }
-                self.command_line.clear();
+                self.command.clear_line();
                 self.mode = Mode::Normal;
             }
             Action::FindCharInRow {
