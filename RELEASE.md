@@ -20,9 +20,9 @@ crates.io for both crates.
 4. After the merge, `release-plz` publishes unpublished crates to crates.io via
    trusted publishing, creates a single `vX.Y.Z` tag, and creates a draft
    GitHub Release.
-5. The same workflow runs again for the new `vX.Y.Z` tag, builds release
-   binaries, uploads archives plus `.sha256` checksum files, and publishes the
-   draft GitHub Release.
+5. The same workflow run reads the tag from `release-plz` output, builds
+   release binaries from that tag, uploads archives plus `.sha256` checksum
+   files, and publishes the draft GitHub Release.
 
 No manual tag push is needed.
 
@@ -36,12 +36,18 @@ No manual tag push is needed.
 - the `vX.Y.Z` tag
 - the draft GitHub Release
 
-The tag-triggered artifact jobs in `release.yml` own:
+The artifact jobs in `release.yml` own:
 
 - Linux, macOS, and Windows binary builds
 - release archives
 - SHA256 checksum files
 - publishing the draft GitHub Release after artifacts are attached
+
+The artifact jobs can run from three entry points:
+
+- automatically after `release-plz` publishes a release on a `main` push
+- a manual `workflow_dispatch` with a `vX.Y.Z` tag input, for recovery
+- a direct `v*` tag push, for exceptional manual releases
 
 The workspace has two public crates but one product release, so
 [`release-plz.toml`](release-plz.toml) is only configuration for the
@@ -53,7 +59,8 @@ enables a single `v{{ version }}` tag/release for `cell-sheet-tui`.
 - If crates.io publishing fails, fix the issue and rerun the failed workflow.
   Do not create a manual tag for the same version.
 - If artifact building fails after crates.io publishing succeeds, the GitHub
-  Release remains a draft. Fix the workflow or code, rerun the tag workflow,
-  and let it upload artifacts and publish the draft.
+  Release remains a draft. Fix the workflow or code, run the release workflow
+  manually with the affected `vX.Y.Z` tag, and let it upload artifacts and
+  publish the draft.
 - If the release PR has the wrong changelog or version, edit the source commits
   or `release-plz.toml` configuration and let the release PR update.

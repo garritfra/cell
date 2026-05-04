@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build artifacts for, e.g. v0.5.0"
+        required: true
+        type: string
   push:
     branches: [main]
     tags: ["v*"]
@@ -19,6 +25,9 @@ jobs:
     name: Release-plz release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release-metadata.outputs.release_tag }}
+      releases_created: ${{ steps.release-plz.outputs.releases_created }}
     permissions:
       contents: write
       id-token: write
@@ -32,11 +41,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Publish release
+        id: release-plz
         uses: release-plz/action@v0.5.128
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract release tag
+        id: release-metadata
+        if: steps.release-plz.outputs.releases_created == 'true'
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: |
+          release_tag="$(echo "$RELEASES" | jq -r 'map(select(.package_name == "cell-sheet-tui"))[0].tag // empty')"
+          if [ -z "$release_tag" ]; then
+            echo "cell-sheet-tui release tag not found in release-plz output" >&2
+            exit 1
+          fi
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
   release-plz-pr:
     name: Release-plz PR
@@ -66,8 +89,13 @@ jobs:
 
   build:
     name: Build (${{ matrix.target }})
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Tags created by release-plz use GITHUB_TOKEN and do not trigger a second
+    # tag-push workflow run, so build artifacts in this same run when released.
+    if: always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || needs.release-plz-release.outputs.releases_created == 'true')
+    needs: release-plz-release
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || startsWith(github.ref, 'refs/tags/v') && github.ref_name || needs.release-plz-release.outputs.release_tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +118,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -112,34 +142,36 @@ jobs:
       - name: Package (unix)
         if: matrix.archive == 'tar.gz'
         run: |
-          mkdir -p dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}
-          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}/
-          cp README.md CHANGELOG.md LICENSE dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}/
-          tar czf ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz -C dist ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}
-          shasum -a 256 ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz > ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+          mkdir -p dist/${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} dist/${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}/
+          cp README.md CHANGELOG.md LICENSE dist/${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}/
+          tar czf ${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz -C dist ${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}
+          shasum -a 256 ${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz > ${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.tar.gz.sha256
 
       - name: Package (windows)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $dist = "dist/${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}"
+          $dist = "dist/${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $dist
           Copy-Item "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" $dist
           Copy-Item README.md,CHANGELOG.md,LICENSE $dist
-          Compress-Archive -Path $dist -DestinationPath "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip"
-          $hash = (Get-FileHash "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip" | Out-File -Encoding ascii "${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.zip.sha256"
+          Compress-Archive -Path $dist -DestinationPath "${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.zip"
+          $hash = (Get-FileHash "${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.zip" | Out-File -Encoding ascii "${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.zip.sha256"
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
-          path: ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.target }}.*
+          path: ${{ env.BINARY_NAME }}-${{ env.RELEASE_TAG }}-${{ matrix.target }}.*
 
   upload-artifacts:
     name: Upload release artifacts
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    if: always() && needs.build.result == 'success'
+    needs: [release-plz-release, build]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || startsWith(github.ref, 'refs/tags/v') && github.ref_name || needs.release-plz-release.outputs.release_tag }}
     permissions:
       contents: write
     steps:
@@ -153,19 +185,19 @@ jobs:
       - name: Wait for release-plz draft
         run: |
           for attempt in {1..30}; do
-            if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
               exit 0
             fi
             sleep 2
           done
-          echo "release ${{ github.ref_name }} was not created by release-plz" >&2
+          echo "release $RELEASE_TAG was not created by release-plz" >&2
           exit 1
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Upload release artifacts
         run: |
-          gh release upload "${{ github.ref_name }}" artifacts/* --clobber
-          gh release edit "${{ github.ref_name }}" --draft=false
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false
         env:
           GH_TOKEN: ${{ github.token }}
