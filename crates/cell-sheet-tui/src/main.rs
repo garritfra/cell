@@ -5,6 +5,7 @@ mod file_format;
 mod headless;
 mod mode;
 mod render;
+mod search;
 mod undo;
 mod viewport;
 
