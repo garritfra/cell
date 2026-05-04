@@ -1,6 +1,7 @@
-use super::{apply_case_op, App, FileFormat};
+use super::{apply_case_op, App};
 use crate::action::{Action, CaseOp, CommandKind, Direction, Mode, SearchDirection};
 use crate::clipboard::Register;
+use crate::file_format::FileFormat;
 use crate::undo::UndoEntry;
 use cell_sheet_core::model::CellPos;
 
@@ -204,17 +205,14 @@ impl App {
                         );
                         return;
                     }
-                    let expected_delim = match format {
-                        FileFormat::Csv => b',',
-                        FileFormat::Tsv => b'\t',
-                        FileFormat::Cell => 0,
-                    };
-                    if !matches!(format, FileFormat::Cell) && self.delimiter != expected_delim {
-                        self.status_message = Some(format!(
-                            "Non-standard delimiter '{}' will be used. Use :w! to force, or save as .tsv / .psv.",
-                            self.delimiter as char
-                        ));
-                        return;
+                    if let Some(expected_delim) = format.canonical_delimiter() {
+                        if self.delimiter != expected_delim {
+                            self.status_message = Some(format!(
+                                "Non-standard delimiter '{}' will be used. Use :w! to force, or save as .tsv / .psv.",
+                                self.delimiter as char
+                            ));
+                            return;
+                        }
                     }
                     self.do_save(&path, format);
                 } else {

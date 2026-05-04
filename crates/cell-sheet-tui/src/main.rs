@@ -1,6 +1,7 @@
 mod action;
 mod app;
 mod clipboard;
+mod file_format;
 mod headless;
 mod mode;
 mod render;
@@ -8,7 +9,7 @@ mod undo;
 mod viewport;
 
 use action::{Action, Mode};
-use app::{App, FileFormat};
+use app::App;
 use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
@@ -19,6 +20,8 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+use crate::file_format::FileFormat;
 
 #[derive(Parser)]
 #[command(name = "cell", version, about = "A terminal spreadsheet editor")]
@@ -164,39 +167,23 @@ fn load_file(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cell_sheet_core::engine::SheetEngine;
 
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    match ext.as_str() {
-        "cell" => {
+    let format = FileFormat::from_path(path);
+    match format {
+        FileFormat::Cell => {
             let file = std::fs::File::open(path)?;
             app.sheet = cell_sheet_core::io::cell_format::read_cell_format(file)?;
-            app.file_format = FileFormat::Cell;
         }
-        _ => {
+        FileFormat::Csv | FileFormat::Tsv => {
             // Read entire file once; use the same bytes for sniffing and parsing.
             let data = std::fs::read(path)?;
-            let delimiter = if let Some(d) = explicit_delimiter {
-                d
-            } else if ext == "tsv" {
-                b'\t'
-            } else {
-                cell_sheet_core::io::csv::sniff_delimiter(&data)
-            };
+            let delimiter = format.resolve_data_delimiter(&data, explicit_delimiter);
             app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
-            app.file_format = if ext == "tsv" {
-                FileFormat::Tsv
-            } else {
-                FileFormat::Csv
-            };
             app.delimiter = delimiter;
         }
     }
 
     app.file_path = Some(path.to_path_buf());
+    app.file_format = format;
 
     SheetEngine::new(&mut app.sheet, &mut app.deps).rebuild_formulas_and_recalculate();
 
@@ -212,20 +199,18 @@ fn load_stdin_data(
 
     // Detect the native .cell format by its magic header. Anything else is
     // treated as CSV/TSV with delimiter sniffing (or an explicit override).
-    if data.starts_with(b"# cell v") {
-        if explicit_delimiter.is_some() {
-            return Err("--delimiter has no effect on .cell-format input piped to stdin".into());
+    let format = FileFormat::from_stdin_bytes(&data);
+    let delimiter = format.resolve_stdin_delimiter(&data, explicit_delimiter)?;
+    match format {
+        FileFormat::Cell => {
+            app.sheet = cell_sheet_core::io::cell_format::read_cell_format(data.as_slice())?;
         }
-        app.sheet = cell_sheet_core::io::cell_format::read_cell_format(data.as_slice())?;
-        app.file_format = FileFormat::Cell;
-        // delimiter stays at its default; .cell format doesn't use one
-    } else {
-        let delimiter =
-            explicit_delimiter.unwrap_or_else(|| cell_sheet_core::io::csv::sniff_delimiter(&data));
-        app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
-        app.file_format = FileFormat::Csv;
-        app.delimiter = delimiter;
+        FileFormat::Csv | FileFormat::Tsv => {
+            app.sheet = cell_sheet_core::io::csv::read_csv(data.as_slice(), delimiter)?;
+            app.delimiter = delimiter;
+        }
     }
+    app.file_format = format;
     // file_path stays None — unnamed buffer; :w <path> still works to save
 
     SheetEngine::new(&mut app.sheet, &mut app.deps).rebuild_formulas_and_recalculate();
