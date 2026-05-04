@@ -149,8 +149,11 @@ than asserting completion from inspection alone.
 - Use [Conventional Commits](https://www.conventionalcommits.org/) prefixes:
   `feat:`, `fix:`, `docs:`, `ci:`, `chore:`, `release:` (last one is for
   maintainers only).
-- Subject in the imperative mood, ≤72 chars. Body explains *why*, not
-  *what*.
+- Commit subjects and PR titles must both use Conventional Commit prefixes.
+  Release automation uses merged PR metadata for changelog generation, so do
+  not open PRs with unprefixed titles.
+- Subject/title in the imperative mood, ≤72 chars. Body/description explains
+  *why*, not *what*.
 - For user-visible changes, add an entry to `CHANGELOG.md` under
   `## Unreleased`, grouped under `Added`, `Changed`, `Fixed`, `Removed`, or
   `Notes`. Reference the PR with `(#NN)` once it's open.
