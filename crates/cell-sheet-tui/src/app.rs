@@ -2,6 +2,7 @@ mod dispatch;
 
 use crate::action::{Action, CaseOp, CommandKind, Mode};
 use crate::clipboard::Register;
+use crate::file_format::FileFormat;
 use crate::mode::mouse::GridLayout;
 use crate::mode::visual::VisualKind;
 use crate::undo::{UndoEntry, UndoStack};
@@ -12,13 +13,6 @@ use cell_sheet_core::help::HelpRegistry;
 use cell_sheet_core::model::{CellPos, Sheet};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FileFormat {
-    Csv,
-    Tsv,
-    Cell,
-}
 
 pub struct App {
     pub sheet: Sheet,
@@ -176,17 +170,7 @@ impl App {
     }
 
     fn format_from_path(path: &Path) -> FileFormat {
-        match path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase()
-            .as_str()
-        {
-            "tsv" => FileFormat::Tsv,
-            "cell" => FileFormat::Cell,
-            _ => FileFormat::Csv,
-        }
+        FileFormat::from_path(path)
     }
 
     fn do_save(&mut self, path: &PathBuf, format: FileFormat) {

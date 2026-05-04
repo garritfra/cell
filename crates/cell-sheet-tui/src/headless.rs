@@ -16,47 +16,7 @@ use cell_sheet_core::formula::{eval, parser};
 use cell_sheet_core::io::{cell_format, csv as csv_io};
 use cell_sheet_core::model::{CellPos, CellValue, Sheet};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Format {
-    Csv,
-    Tsv,
-    Cell,
-}
-
-impl Format {
-    fn from_path(path: &Path) -> Self {
-        match path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase()
-            .as_str()
-        {
-            "tsv" => Format::Tsv,
-            "cell" => Format::Cell,
-            _ => Format::Csv,
-        }
-    }
-}
-
-/// Magic header for the native `.cell` text format. Both the existing
-/// writer (`write_cell_format`) and reader (`read_cell_format`) anchor on
-/// `# cell v1` as the first line, so detecting it on a stdin byte stream
-/// is unambiguous and safe to use to dispatch between the cell-format and
-/// CSV/TSV readers.
-const CELL_FORMAT_MAGIC: &[u8] = b"# cell v";
-
-/// Detect whether a stdin byte stream is in the native `.cell` format.
-/// Returns `Format::Cell` when the first line begins with the cell-format
-/// magic header, otherwise `Format::Csv` (CSV/TSV both go through
-/// `csv_io::read_csv`, with the delimiter sniffed separately).
-fn detect_stdin_format(data: &[u8]) -> Format {
-    if data.starts_with(CELL_FORMAT_MAGIC) {
-        Format::Cell
-    } else {
-        Format::Csv
-    }
-}
+use crate::file_format::FileFormat;
 
 #[derive(Debug)]
 pub struct Options {
@@ -67,27 +27,6 @@ pub struct Options {
     pub evals: Vec<String>,
     pub writes: Vec<(String, String)>,
     pub delimiter: Option<u8>,
-}
-
-fn resolve_delimiter(
-    path: &Path,
-    format: Format,
-    explicit: Option<u8>,
-) -> Result<u8, Box<dyn std::error::Error>> {
-    if let Some(d) = explicit {
-        return Ok(d);
-    }
-    match format {
-        Format::Tsv => Ok(b'\t'),
-        Format::Cell => Ok(b','), // unused — .cell files don't use a delimiter
-        Format::Csv => {
-            use std::io::Read as _;
-            let mut buf = vec![0u8; 4096];
-            let mut file = std::fs::File::open(path)?;
-            let n = file.read(&mut buf)?;
-            Ok(csv_io::sniff_delimiter(&buf[..n]))
-        }
-    }
 }
 
 /// Run the requested headless operations and write their textual results to
@@ -101,21 +40,17 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
                     .to_string(),
             );
         }
-        let format = detect_stdin_format(data);
-        if matches!(format, Format::Cell) && opts.delimiter.is_some() {
-            return Err(
-                "--delimiter has no effect on .cell-format input piped to stdin".to_string(),
-            );
-        }
-        let delimiter = opts
-            .delimiter
-            .unwrap_or_else(|| csv_io::sniff_delimiter(data));
+        let format = FileFormat::from_stdin_bytes(data);
+        let delimiter = format
+            .resolve_stdin_delimiter(data, opts.delimiter)
+            .map_err(|msg| msg.to_string())?;
         let (sheet, deps) = load_from_bytes(data, format, delimiter)
             .map_err(|e| format!("failed to parse stdin: {e}"))?;
-        (sheet, deps, None::<(Format, u8)>)
+        (sheet, deps, None::<(FileFormat, u8)>)
     } else {
-        let format = Format::from_path(&opts.file);
-        let delimiter = resolve_delimiter(&opts.file, format, opts.delimiter)
+        let format = FileFormat::from_path(&opts.file);
+        let delimiter = format
+            .resolve_path_delimiter(&opts.file, opts.delimiter)
             .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
         let (sheet, deps) = load(&opts.file, format, delimiter)
             .map_err(|e| format!("failed to read {}: {e}", opts.file.display()))?;
@@ -159,15 +94,15 @@ pub fn run<W: Write>(opts: &Options, out: &mut W) -> Result<(), String> {
 
 fn load(
     path: &Path,
-    format: Format,
+    format: FileFormat,
     delimiter: u8,
 ) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
     let mut sheet = match format {
-        Format::Csv | Format::Tsv => {
+        FileFormat::Csv | FileFormat::Tsv => {
             let file = std::fs::File::open(path)?;
             csv_io::read_csv(file, delimiter)?
         }
-        Format::Cell => {
+        FileFormat::Cell => {
             let file = std::fs::File::open(path)?;
             cell_format::read_cell_format(file)?
         }
@@ -181,12 +116,12 @@ fn load(
 
 fn load_from_bytes(
     data: &[u8],
-    format: Format,
+    format: FileFormat,
     delimiter: u8,
 ) -> Result<(Sheet, DepGraph), Box<dyn std::error::Error>> {
     let mut sheet = match format {
-        Format::Cell => cell_format::read_cell_format(data)?,
-        Format::Csv | Format::Tsv => csv_io::read_csv(data, delimiter)?,
+        FileFormat::Cell => cell_format::read_cell_format(data)?,
+        FileFormat::Csv | FileFormat::Tsv => csv_io::read_csv(data, delimiter)?,
     };
     let mut deps = DepGraph::new();
 
@@ -197,14 +132,14 @@ fn load_from_bytes(
 
 fn save(
     path: &Path,
-    format: Format,
+    format: FileFormat,
     sheet: &Sheet,
     delimiter: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let file = std::fs::File::create(path)?;
     match format {
-        Format::Csv | Format::Tsv => csv_io::write_csv(sheet, file, delimiter)?,
-        Format::Cell => cell_format::write_cell_format(sheet, file)?,
+        FileFormat::Csv | FileFormat::Tsv => csv_io::write_csv(sheet, file, delimiter)?,
+        FileFormat::Cell => cell_format::write_cell_format(sheet, file)?,
     }
     Ok(())
 }
