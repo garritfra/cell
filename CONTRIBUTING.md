@@ -18,8 +18,10 @@ contributions that don't meet this bar.
 - **Report a bug** — open a [GitHub issue](https://github.com/garritfra/cell/issues)
   with a minimal reproduction (commands, sample data, expected vs. actual
   behavior, OS, and `cell --version`).
-- **Suggest a feature** — open an issue first so we can discuss scope before
-  you spend time on a PR.
+- **Suggest a feature** — for small, concrete requests, open an issue so we
+  can discuss scope. For larger or uncertain ideas, start an
+  [Ideas discussion](https://github.com/garritfra/cell/discussions/categories/ideas)
+  first so we can explore the design before tracking implementation work.
 - **Fix a bug or implement a feature** — see the workflow below.
 - **Improve documentation** — README, CHANGELOG, doc comments, examples.
 
@@ -180,8 +182,10 @@ something big, consider splitting it into a series of commits or PRs.
 - More import/export formats (XLSX, ODS, Markdown).
 - Improved test coverage of TUI input handling.
 
-If you have an idea that isn't on this list, open an issue and we can talk
-about it.
+If you have an idea that isn't on this list, open an issue for a scoped
+request or start an
+[Ideas discussion](https://github.com/garritfra/cell/discussions/categories/ideas)
+for broader proposals.
 
 ## Releasing
 
