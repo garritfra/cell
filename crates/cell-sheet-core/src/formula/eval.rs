@@ -3,18 +3,30 @@ use crate::formula::functions;
 use crate::formula::parser;
 use crate::model::{CellError, CellPos, CellValue, Sheet};
 
-fn expand_range(start: &CellRef, end: &CellRef) -> Vec<CellPos> {
-    let mut positions = Vec::new();
+/// Maximum number of cells a single range expression may expand to. Ranges
+/// larger than this (e.g. `A1:XFD1048576`) are rejected as `#VALUE!` to
+/// prevent the evaluator from allocating gigabytes of `CellPos` and OOM-killing
+/// the editor.
+const MAX_RANGE_CELLS: usize = 1_000_000;
+
+fn expand_range(start: &CellRef, end: &CellRef) -> Result<Vec<CellPos>, CellError> {
     let r1 = start.row.min(end.row);
     let r2 = start.row.max(end.row);
     let c1 = start.col.min(end.col);
     let c2 = start.col.max(end.col);
+    let rows = r2.saturating_sub(r1).saturating_add(1);
+    let cols = c2.saturating_sub(c1).saturating_add(1);
+    let total = rows.checked_mul(cols).ok_or(CellError::Value)?;
+    if total > MAX_RANGE_CELLS {
+        return Err(CellError::Value);
+    }
+    let mut positions = Vec::with_capacity(total);
     for r in r1..=r2 {
         for c in c1..=c2 {
             positions.push((r, c));
         }
     }
-    positions
+    Ok(positions)
 }
 
 fn resolve_cell(sheet: &Sheet, pos: CellPos) -> CellValue {
@@ -123,11 +135,14 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
             let mut values = Vec::new();
             for arg in args {
                 match arg {
-                    Expr::Range { start, end } => {
-                        for pos in expand_range(start, end) {
-                            values.push(resolve_cell(sheet, pos));
+                    Expr::Range { start, end } => match expand_range(start, end) {
+                        Ok(positions) => {
+                            for pos in positions {
+                                values.push(resolve_cell(sheet, pos));
+                            }
                         }
-                    }
+                        Err(e) => return CellValue::Error(e),
+                    },
                     other => {
                         values.push(eval_expr(other, sheet));
                     }
@@ -334,6 +349,15 @@ mod tests {
         assert_eq!(
             eval_with_sheet("A1+1", &sheet),
             CellValue::Error(CellError::DivZero)
+        );
+    }
+
+    #[test]
+    fn eval_huge_range_returns_error_instead_of_oom() {
+        let sheet = Sheet::new();
+        assert_eq!(
+            eval_with_sheet("SUM(A1:XFD1048576)", &sheet),
+            CellValue::Error(CellError::Value)
         );
     }
 }
