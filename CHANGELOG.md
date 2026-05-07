@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- *(formula-engine)* Equality operators `=` and `<>` now work on text, bool,
+  and empty values, not just numbers. Text comparison is case-insensitive
+  (matching Excel/Google Sheets); mixed-type comparisons return `FALSE` for
+  `=` and `TRUE` for `<>` rather than `#VALUE!`. Ordering operators (`<`,
+  `<=`, `>`, `>=`) remain numeric-only ([#68](https://github.com/garritfra/cell/issues/68)).
+
 ## [0.5.0](https://github.com/garritfra/cell/compare/v0.4.0...v0.5.0) - 2026-05-04
 
 ### Added

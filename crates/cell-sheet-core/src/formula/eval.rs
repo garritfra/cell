@@ -90,7 +90,34 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
                         _ => unreachable!(),
                     }
                 }
-                Op::Gt | Op::Gte | Op::Lt | Op::Lte | Op::Eq | Op::Neq => {
+                Op::Eq | Op::Neq => {
+                    // Typed equality: compare values within the same type.
+                    // Mixed types are not equal (matches Excel/Google Sheets),
+                    // rather than producing a #VALUE! error.
+                    //
+                    // Text comparison is case-insensitive (Unicode-aware via
+                    // `to_lowercase`), matching Excel/Google Sheets `=` on text.
+                    let eq = match (&lval, &rval) {
+                        (CellValue::Number(a), CellValue::Number(b)) => {
+                            (a - b).abs() < f64::EPSILON
+                        }
+                        (CellValue::Text(a), CellValue::Text(b)) => {
+                            a.to_lowercase() == b.to_lowercase()
+                        }
+                        (CellValue::Bool(a), CellValue::Bool(b)) => a == b,
+                        (CellValue::Empty, CellValue::Empty) => true,
+                        // Mixed types are unequal rather than an error.
+                        _ => false,
+                    };
+                    let result = match op {
+                        Op::Eq => eq,
+                        Op::Neq => !eq,
+                        _ => unreachable!(),
+                    };
+                    CellValue::Bool(result)
+                }
+                Op::Gt | Op::Gte | Op::Lt | Op::Lte => {
+                    // Ordering operators remain numeric-only for now.
                     let ln = match cell_value_to_number(&lval) {
                         Ok(n) => n,
                         Err(e) => return CellValue::Error(e),
@@ -104,8 +131,6 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
                         Op::Gte => ln >= rn,
                         Op::Lt => ln < rn,
                         Op::Lte => ln <= rn,
-                        Op::Eq => (ln - rn).abs() < f64::EPSILON,
-                        Op::Neq => (ln - rn).abs() >= f64::EPSILON,
                         _ => unreachable!(),
                     };
                     CellValue::Bool(result)
@@ -324,6 +349,88 @@ mod tests {
     #[test]
     fn eval_unknown_function() {
         assert_eq!(eval("FOO(1)"), CellValue::Error(CellError::Name));
+    }
+
+    #[test]
+    fn eval_eq_text_text_equal() {
+        assert_eq!(eval("\"foo\"=\"foo\""), CellValue::Bool(true));
+    }
+
+    #[test]
+    fn eval_eq_text_text_not_equal() {
+        assert_eq!(eval("\"foo\"=\"bar\""), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_eq_text_case_insensitive() {
+        // Match Excel/Google Sheets behavior for `=` on strings.
+        assert_eq!(eval("\"foo\"=\"FOO\""), CellValue::Bool(true));
+        assert_eq!(eval("\"Hello\"=\"hello\""), CellValue::Bool(true));
+    }
+
+    #[test]
+    fn eval_neq_text_text() {
+        assert_eq!(eval("\"foo\"<>\"bar\""), CellValue::Bool(true));
+        assert_eq!(eval("\"foo\"<>\"foo\""), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_eq_bool_bool() {
+        assert_eq!(eval("TRUE=TRUE"), CellValue::Bool(true));
+        assert_eq!(eval("TRUE=FALSE"), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_neq_bool_bool() {
+        assert_eq!(eval("TRUE<>FALSE"), CellValue::Bool(true));
+        assert_eq!(eval("TRUE<>TRUE"), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_eq_mixed_types_is_false() {
+        // Number vs. Text — Excel returns FALSE rather than #VALUE!.
+        assert_eq!(eval("\"1\"=1"), CellValue::Bool(false));
+        assert_eq!(eval("1=\"1\""), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_neq_mixed_types_is_true() {
+        assert_eq!(eval("\"1\"<>1"), CellValue::Bool(true));
+        assert_eq!(eval("1<>\"1\""), CellValue::Bool(true));
+    }
+
+    #[test]
+    fn eval_if_with_text_cell_equality() {
+        // Acceptance-criteria example from the issue: IF(A1=C3, A2, 0)
+        // with both A1 and C3 containing text.
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "hello"); // A1
+        sheet.set_cell((1, 0), "42"); // A2 -> Number(42)
+        sheet.set_cell((2, 2), "hello"); // C3
+        assert_eq!(
+            eval_with_sheet("IF(A1=C3,A2,0)", &sheet),
+            CellValue::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn eval_if_with_text_cell_inequality() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "hello");
+        sheet.set_cell((1, 0), "42");
+        sheet.set_cell((2, 2), "world");
+        assert_eq!(
+            eval_with_sheet("IF(A1=C3,A2,0)", &sheet),
+            CellValue::Number(0.0)
+        );
+    }
+
+    #[test]
+    fn eval_ordering_on_text_still_errors() {
+        // Per the issue, ordering operators on strings remain numeric-only
+        // (out of scope for this fix). Lock that in so we notice if it changes.
+        assert_eq!(eval("\"a\"<\"b\""), CellValue::Error(CellError::Value));
+        assert_eq!(eval("\"a\">\"b\""), CellValue::Error(CellError::Value));
     }
 
     #[test]
