@@ -726,6 +726,12 @@ pub static FORMULA_ENTRIES: &[HelpEntry] = &[
         summary: "Conditional expression",
         detail: "Returns one value if a condition is true, another if false.\n\nUsage: =IF(condition, value_if_true, value_if_false)\n\nExamples:\n  =IF(A1>10, \"big\", \"small\")\n  =IF(B2, C2, D2)",
     },
+    HelpEntry {
+        tags: &["=", "<>", "equality", "comparison"],
+        category: HelpCategory::Formula,
+        summary: "Equality operators (`=`, `<>`)",
+        detail: "Compare two values for equality (`=`) or inequality (`<>`).\n\nValues are compared within their own type:\n  - Number vs. Number: numeric comparison.\n  - Text vs. Text:    case-INSENSITIVE string comparison.\n  - Bool vs. Bool:    boolean comparison.\n  - Empty vs. Empty:  equal.\n  - Mixed types:      `=` is FALSE, `<>` is TRUE (no error).\n\nOrdering operators (`<`, `<=`, `>`, `>=`) are numeric-only.\n\nExamples:\n  =IF(A1=C3, A2, 0)         compare two text cells\n  =IF(\"foo\"=\"FOO\", 1, 0)    -> 1 (case-insensitive)\n  =1<>\"1\"                   -> TRUE (mixed types)",
+    },
 ];
 
 pub static MOUSE_ENTRIES: &[HelpEntry] = &[

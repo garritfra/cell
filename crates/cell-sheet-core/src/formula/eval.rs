@@ -3,18 +3,30 @@ use crate::formula::functions;
 use crate::formula::parser;
 use crate::model::{CellError, CellPos, CellValue, Sheet};
 
-fn expand_range(start: &CellRef, end: &CellRef) -> Vec<CellPos> {
-    let mut positions = Vec::new();
+/// Maximum number of cells a single range expression may expand to. Ranges
+/// larger than this (e.g. `A1:XFD1048576`) are rejected as `#VALUE!` to
+/// prevent the evaluator from allocating gigabytes of `CellPos` and OOM-killing
+/// the editor.
+const MAX_RANGE_CELLS: usize = 1_000_000;
+
+fn expand_range(start: &CellRef, end: &CellRef) -> Result<Vec<CellPos>, CellError> {
     let r1 = start.row.min(end.row);
     let r2 = start.row.max(end.row);
     let c1 = start.col.min(end.col);
     let c2 = start.col.max(end.col);
+    let rows = r2.saturating_sub(r1).saturating_add(1);
+    let cols = c2.saturating_sub(c1).saturating_add(1);
+    let total = rows.checked_mul(cols).ok_or(CellError::Value)?;
+    if total > MAX_RANGE_CELLS {
+        return Err(CellError::Value);
+    }
+    let mut positions = Vec::with_capacity(total);
     for r in r1..=r2 {
         for c in c1..=c2 {
             positions.push((r, c));
         }
     }
-    positions
+    Ok(positions)
 }
 
 fn resolve_cell(sheet: &Sheet, pos: CellPos) -> CellValue {
@@ -90,7 +102,34 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
                         _ => unreachable!(),
                     }
                 }
-                Op::Gt | Op::Gte | Op::Lt | Op::Lte | Op::Eq | Op::Neq => {
+                Op::Eq | Op::Neq => {
+                    // Typed equality: compare values within the same type.
+                    // Mixed types are not equal (matches Excel/Google Sheets),
+                    // rather than producing a #VALUE! error.
+                    //
+                    // Text comparison is case-insensitive (Unicode-aware via
+                    // `to_lowercase`), matching Excel/Google Sheets `=` on text.
+                    let eq = match (&lval, &rval) {
+                        (CellValue::Number(a), CellValue::Number(b)) => {
+                            (a - b).abs() < f64::EPSILON
+                        }
+                        (CellValue::Text(a), CellValue::Text(b)) => {
+                            a.to_lowercase() == b.to_lowercase()
+                        }
+                        (CellValue::Bool(a), CellValue::Bool(b)) => a == b,
+                        (CellValue::Empty, CellValue::Empty) => true,
+                        // Mixed types are unequal rather than an error.
+                        _ => false,
+                    };
+                    let result = match op {
+                        Op::Eq => eq,
+                        Op::Neq => !eq,
+                        _ => unreachable!(),
+                    };
+                    CellValue::Bool(result)
+                }
+                Op::Gt | Op::Gte | Op::Lt | Op::Lte => {
+                    // Ordering operators remain numeric-only for now.
                     let ln = match cell_value_to_number(&lval) {
                         Ok(n) => n,
                         Err(e) => return CellValue::Error(e),
@@ -104,8 +143,6 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
                         Op::Gte => ln >= rn,
                         Op::Lt => ln < rn,
                         Op::Lte => ln <= rn,
-                        Op::Eq => (ln - rn).abs() < f64::EPSILON,
-                        Op::Neq => (ln - rn).abs() >= f64::EPSILON,
                         _ => unreachable!(),
                     };
                     CellValue::Bool(result)
@@ -123,11 +160,14 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
             let mut values = Vec::new();
             for arg in args {
                 match arg {
-                    Expr::Range { start, end } => {
-                        for pos in expand_range(start, end) {
-                            values.push(resolve_cell(sheet, pos));
+                    Expr::Range { start, end } => match expand_range(start, end) {
+                        Ok(positions) => {
+                            for pos in positions {
+                                values.push(resolve_cell(sheet, pos));
+                            }
                         }
-                    }
+                        Err(e) => return CellValue::Error(e),
+                    },
                     other => {
                         values.push(eval_expr(other, sheet));
                     }
@@ -327,6 +367,88 @@ mod tests {
     }
 
     #[test]
+    fn eval_eq_text_text_equal() {
+        assert_eq!(eval("\"foo\"=\"foo\""), CellValue::Bool(true));
+    }
+
+    #[test]
+    fn eval_eq_text_text_not_equal() {
+        assert_eq!(eval("\"foo\"=\"bar\""), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_eq_text_case_insensitive() {
+        // Match Excel/Google Sheets behavior for `=` on strings.
+        assert_eq!(eval("\"foo\"=\"FOO\""), CellValue::Bool(true));
+        assert_eq!(eval("\"Hello\"=\"hello\""), CellValue::Bool(true));
+    }
+
+    #[test]
+    fn eval_neq_text_text() {
+        assert_eq!(eval("\"foo\"<>\"bar\""), CellValue::Bool(true));
+        assert_eq!(eval("\"foo\"<>\"foo\""), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_eq_bool_bool() {
+        assert_eq!(eval("TRUE=TRUE"), CellValue::Bool(true));
+        assert_eq!(eval("TRUE=FALSE"), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_neq_bool_bool() {
+        assert_eq!(eval("TRUE<>FALSE"), CellValue::Bool(true));
+        assert_eq!(eval("TRUE<>TRUE"), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_eq_mixed_types_is_false() {
+        // Number vs. Text — Excel returns FALSE rather than #VALUE!.
+        assert_eq!(eval("\"1\"=1"), CellValue::Bool(false));
+        assert_eq!(eval("1=\"1\""), CellValue::Bool(false));
+    }
+
+    #[test]
+    fn eval_neq_mixed_types_is_true() {
+        assert_eq!(eval("\"1\"<>1"), CellValue::Bool(true));
+        assert_eq!(eval("1<>\"1\""), CellValue::Bool(true));
+    }
+
+    #[test]
+    fn eval_if_with_text_cell_equality() {
+        // Acceptance-criteria example from the issue: IF(A1=C3, A2, 0)
+        // with both A1 and C3 containing text.
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "hello"); // A1
+        sheet.set_cell((1, 0), "42"); // A2 -> Number(42)
+        sheet.set_cell((2, 2), "hello"); // C3
+        assert_eq!(
+            eval_with_sheet("IF(A1=C3,A2,0)", &sheet),
+            CellValue::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn eval_if_with_text_cell_inequality() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "hello");
+        sheet.set_cell((1, 0), "42");
+        sheet.set_cell((2, 2), "world");
+        assert_eq!(
+            eval_with_sheet("IF(A1=C3,A2,0)", &sheet),
+            CellValue::Number(0.0)
+        );
+    }
+
+    #[test]
+    fn eval_ordering_on_text_still_errors() {
+        // Per the issue, ordering operators on strings remain numeric-only
+        // (out of scope for this fix). Lock that in so we notice if it changes.
+        assert_eq!(eval("\"a\"<\"b\""), CellValue::Error(CellError::Value));
+        assert_eq!(eval("\"a\">\"b\""), CellValue::Error(CellError::Value));
+    }
+
+    #[test]
     fn eval_lowercase_formula_equivalent() {
         let mut sheet = Sheet::new();
         sheet.set_cell((0, 0), "1");
@@ -356,6 +478,15 @@ mod tests {
         assert_eq!(
             eval_with_sheet("A1+1", &sheet),
             CellValue::Error(CellError::DivZero)
+        );
+    }
+
+    #[test]
+    fn eval_huge_range_returns_error_instead_of_oom() {
+        let sheet = Sheet::new();
+        assert_eq!(
+            eval_with_sheet("SUM(A1:XFD1048576)", &sheet),
+            CellValue::Error(CellError::Value)
         );
     }
 }
