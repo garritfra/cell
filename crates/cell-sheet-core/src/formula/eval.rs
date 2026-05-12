@@ -327,6 +327,28 @@ mod tests {
     }
 
     #[test]
+    fn eval_lowercase_formula_equivalent() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "1");
+        sheet.set_cell((1, 0), "2");
+        assert_eq!(
+            eval_with_sheet("sum(a1:a2)", &sheet),
+            eval_with_sheet("SUM(A1:A2)", &sheet),
+        );
+    }
+
+    #[test]
+    fn eval_mixed_case_formula() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "10");
+        sheet.set_cell((1, 0), "20");
+        assert_eq!(
+            eval_with_sheet("Sum(A1:a2)", &sheet),
+            CellValue::Number(30.0),
+        );
+    }
+
+    #[test]
     fn eval_error_propagation() {
         let mut sheet = Sheet::new();
         sheet.set_cell((0, 0), "=1/0");
