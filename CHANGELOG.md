@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## [0.5.1](https://github.com/garritfra/cell/compare/v0.5.0...v0.5.1) - 2026-06-29
+
+### Added
+
+- case-insensitive formulas and cell references ([#110](https://github.com/garritfra/cell/pull/110))
+
+### Fixed
+
+- *(formula-engine)* typed equality for `=` and `<>` (closes #68) ([#107](https://github.com/garritfra/cell/pull/107))
+- *(formula)* bound expand_range to prevent OOM on giant ranges ([#72](https://github.com/garritfra/cell/pull/72)) ([#104](https://github.com/garritfra/cell/pull/104))
+
+### Other
+
+- build artifacts after release-plz publishes ([#102](https://github.com/garritfra/cell/pull/102))
+
 ## [0.5.0](https://github.com/garritfra/cell/compare/v0.4.0...v0.5.0) - 2026-05-04
 
 ### Added
