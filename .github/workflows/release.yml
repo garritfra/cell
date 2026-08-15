@@ -42,7 +42,7 @@ jobs:
 
       - name: Publish release
         id: release-plz
-        uses: release-plz/action@v0.5.130
+        uses: release-plz/action@v0.5.131
         with:
           command: release
         env:
@@ -81,7 +81,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Open or update release PR
-        uses: release-plz/action@v0.5.130
+        uses: release-plz/action@v0.5.131
         with:
           command: release-pr
         env:
