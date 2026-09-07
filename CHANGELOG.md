@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [0.5.2](https://github.com/garritfra/cell/compare/v0.5.1...v0.5.2) - 2026-09-07
+
+### Added
+
+- add ROUND formula function ([#121](https://github.com/garritfra/cell/pull/121))
+
 ### Added
 
 - `ROUND(number, [digits])` formula function (#119)
