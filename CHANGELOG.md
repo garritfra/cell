@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `ROUND(number, [digits])` formula function (#119)
+
 ## [0.5.0](https://github.com/garritfra/cell/compare/v0.4.0...v0.5.0) - 2026-05-04
 
 ### Added

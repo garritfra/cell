@@ -140,6 +140,7 @@ fn eval_expr(expr: &Expr, sheet: &Sheet) -> CellValue {
                 "COUNT" => functions::fn_count(&values),
                 "MIN" => functions::fn_min(&values),
                 "MAX" => functions::fn_max(&values),
+                "ROUND" => functions::fn_round(&values),
                 _ => CellValue::Error(CellError::Name),
             }
         }
@@ -165,6 +166,19 @@ mod tests {
     fn eval(formula: &str) -> CellValue {
         let sheet = Sheet::new();
         eval_with_sheet(formula, &sheet)
+    }
+
+    #[test]
+    fn eval_round_function() {
+        let mut sheet = Sheet::new();
+        sheet.set_cell((0, 0), "10");
+        sheet.set_cell((0, 1), "3");
+        assert_eq!(
+            eval_with_sheet("ROUND(A1/B1, 2)", &sheet),
+            CellValue::Number(3.33)
+        );
+        assert_eq!(eval("ROUND(2.5)"), CellValue::Number(3.0));
+        assert_eq!(eval("ROUND(1/0)"), CellValue::Error(CellError::DivZero));
     }
 
     #[test]

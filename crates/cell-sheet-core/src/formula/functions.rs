@@ -94,9 +94,42 @@ pub fn fn_if(args: &[CellValue]) -> CellValue {
     }
 }
 
+/// `ROUND(number, [digits])` — rounds half away from zero, like Excel.
+/// Negative `digits` round to the left of the decimal point.
+pub fn fn_round(args: &[CellValue]) -> CellValue {
+    let (n, digits) = match args {
+        [CellValue::Number(n)] => (*n, 0.0),
+        [CellValue::Number(n), CellValue::Number(d)] => (*n, d.trunc()),
+        [CellValue::Error(e), ..] | [_, CellValue::Error(e)] => return CellValue::Error(e.clone()),
+        _ => return CellValue::Error(CellError::Value),
+    };
+    let factor = 10f64.powi(digits as i32);
+    CellValue::Number((n * factor).round() / factor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_matches_excel_semantics() {
+        assert_eq!(fn_round(&[num(2.5)]), num(3.0));
+        assert_eq!(fn_round(&[num(-2.5)]), num(-3.0));
+        assert_eq!(fn_round(&[num(1.23456), num(2.0)]), num(1.23));
+        assert_eq!(fn_round(&[num(1234.5), num(-2.0)]), num(1200.0));
+        assert_eq!(
+            fn_round(&[num(1.0), num(2.0), num(3.0)]),
+            CellValue::Error(CellError::Value)
+        );
+        assert_eq!(
+            fn_round(&[CellValue::Text("x".into())]),
+            CellValue::Error(CellError::Value)
+        );
+        assert_eq!(
+            fn_round(&[CellValue::Error(CellError::DivZero)]),
+            CellValue::Error(CellError::DivZero)
+        );
+    }
 
     fn num(n: f64) -> CellValue {
         CellValue::Number(n)
