@@ -220,7 +220,7 @@ Formulas start with `=` and support Excel-compatible syntax:
 
 ### Supported Functions (v1)
 
-`SUM`, `AVERAGE`, `COUNT`, `MIN`, `MAX`, `IF`
+`SUM`, `AVERAGE`, `COUNT`, `MIN`, `MAX`, `IF`, `ROUND`
 
 Formula compliance with the ODF (OpenDocument Formula) spec is tracked and will expand over time.
 
@@ -240,7 +240,7 @@ When saving a CSV that contains formulas, cell warns you and suggests saving as 
 | **Language / TUI** | Rust + ratatui | C + ncurses |
 | **Editing model** | True Vim modal editing (`i` → Insert, `ESC` → Normal) | Vim-inspired navigation; `=` to enter a value, `e`/`E` to edit |
 | **Formula syntax** | Excel-compatible (`=SUM(A1:A10)`, `=IF(...)`) | `@`-prefix style (`@sum(A1:A10)`, `@avg(...)`) |
-| **Built-in functions** | SUM, AVERAGE, COUNT, MIN, MAX, IF | Extensive (@sum, @avg, @min, @max, @abs, @sqrt, ...) |
+| **Built-in functions** | SUM, AVERAGE, COUNT, MIN, MAX, IF, ROUND | Extensive (@sum, @avg, @min, @max, @abs, @sqrt, ...) |
 | **File formats** | CSV, TSV, `.cell` | CSV, TSV, XLSX/XLS/ODS import, Markdown export, `.sc` |
 | **Cell formatting** | not yet | Bold, italic, underline, RGB colors |
 | **Scripting** | Headless CLI mode (`--read` / `--write` / `--eval`, stdin pipe) | Lua scripting, external C modules, non-interactive mode |

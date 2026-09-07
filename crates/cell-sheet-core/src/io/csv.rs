@@ -15,7 +15,7 @@ pub fn sniff_delimiter(sample: &[u8]) -> u8 {
     let line = &sample[..line_end.min(4096)];
 
     // Iterate in preference order so the first candidate wins ties.
-    let candidates = [b',', b'\t', b'|', b';'];
+    let candidates = *b",\t|;";
     let mut best_delim = b',';
     let mut best_count = 0usize;
     for &d in &candidates {

@@ -727,6 +727,12 @@ pub static FORMULA_ENTRIES: &[HelpEntry] = &[
         detail: "Returns one value if a condition is true, another if false.\n\nUsage: =IF(condition, value_if_true, value_if_false)\n\nExamples:\n  =IF(A1>10, \"big\", \"small\")\n  =IF(B2, C2, D2)",
     },
     HelpEntry {
+        tags: &["ROUND"],
+        category: HelpCategory::Formula,
+        summary: "Round a number to a given number of digits",
+        detail: "Rounds a number to the given number of decimal digits (default 0).\nHalves round away from zero. Negative digits round to tens, hundreds, etc.\n\nUsage: =ROUND(number, [digits])\n\nExamples:\n  =ROUND(A1/B1, 2)\n  =ROUND(2.5)        -> 3\n  =ROUND(1234.5, -2) -> 1200",
+    },
+    HelpEntry {
         tags: &["=", "<>", "equality", "comparison"],
         category: HelpCategory::Formula,
         summary: "Equality operators (`=`, `<>`)",
