@@ -109,8 +109,10 @@ fn main() -> ExitCode {
             evals: cli.eval,
             writes: cli
                 .write
-                .chunks_exact(2)
-                .map(|c| (c[0].clone(), c[1].clone()))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|[k, v]| (k.clone(), v.clone()))
                 .collect(),
             delimiter: explicit_delimiter,
         };
