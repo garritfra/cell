@@ -732,6 +732,12 @@ pub static FORMULA_ENTRIES: &[HelpEntry] = &[
         summary: "Round a number to a given number of digits",
         detail: "Rounds a number to the given number of decimal digits (default 0).\nHalves round away from zero. Negative digits round to tens, hundreds, etc.\n\nUsage: =ROUND(number, [digits])\n\nExamples:\n  =ROUND(A1/B1, 2)\n  =ROUND(2.5)        -> 3\n  =ROUND(1234.5, -2) -> 1200",
     },
+    HelpEntry {
+        tags: &["=", "<>", "equality", "comparison"],
+        category: HelpCategory::Formula,
+        summary: "Equality operators (`=`, `<>`)",
+        detail: "Compare two values for equality (`=`) or inequality (`<>`).\n\nValues are compared within their own type:\n  - Number vs. Number: numeric comparison.\n  - Text vs. Text:    case-INSENSITIVE string comparison.\n  - Bool vs. Bool:    boolean comparison.\n  - Empty vs. Empty:  equal.\n  - Mixed types:      `=` is FALSE, `<>` is TRUE (no error).\n\nOrdering operators (`<`, `<=`, `>`, `>=`) are numeric-only.\n\nExamples:\n  =IF(A1=C3, A2, 0)         compare two text cells\n  =IF(\"foo\"=\"FOO\", 1, 0)    -> 1 (case-insensitive)\n  =1<>\"1\"                   -> TRUE (mixed types)",
+    },
 ];
 
 pub static MOUSE_ENTRIES: &[HelpEntry] = &[

@@ -108,7 +108,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, CellError> {
                 tokens.push(Token::StringLit(s));
                 i += 1; // skip closing quote
             }
-            c if c == '$' || c.is_ascii_uppercase() => {
+            c if c == '$' || c.is_ascii_alphabetic() => {
                 let mut abs_col = false;
                 let mut j = i;
 
@@ -118,10 +118,13 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, CellError> {
                 }
 
                 let col_start = j;
-                while j < chars.len() && chars[j].is_ascii_uppercase() {
+                while j < chars.len() && chars[j].is_ascii_alphabetic() {
                     j += 1;
                 }
-                let col: String = chars[col_start..j].iter().collect();
+                let col: String = chars[col_start..j]
+                    .iter()
+                    .map(|c| c.to_ascii_uppercase())
+                    .collect();
 
                 if col.is_empty() {
                     return Err(CellError::Parse);
@@ -342,6 +345,52 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn tokenize_lowercase_cell_ref() {
+        let tokens = tokenize("a1").unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::CellRef {
+                col: "A".into(),
+                row: "1".into(),
+                abs_col: false,
+                abs_row: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn tokenize_mixed_case_cell_ref() {
+        let tokens = tokenize("Aa10").unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::CellRef {
+                col: "AA".into(),
+                row: "10".into(),
+                abs_col: false,
+                abs_row: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn tokenize_lowercase_function_name() {
+        let tokens = tokenize("sum(").unwrap();
+        assert_eq!(tokens, vec![Token::Ident("SUM".into()), Token::LParen]);
+    }
+
+    #[test]
+    fn tokenize_lowercase_boolean_true() {
+        let tokens = tokenize("true").unwrap();
+        assert_eq!(tokens, vec![Token::Bool(true)]);
+    }
+
+    #[test]
+    fn tokenize_lowercase_boolean_false() {
+        let tokens = tokenize("False").unwrap();
+        assert_eq!(tokens, vec![Token::Bool(false)]);
     }
 
     #[test]

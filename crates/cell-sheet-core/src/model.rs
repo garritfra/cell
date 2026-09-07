@@ -173,13 +173,14 @@ pub fn col_index_to_label(mut col: usize) -> String {
 pub fn col_label_to_index(label: &str) -> Option<usize> {
     let mut index = 0usize;
     for (i, c) in label.chars().enumerate() {
-        if !c.is_ascii_uppercase() {
+        if !c.is_ascii_alphabetic() {
             return None;
         }
+        let upper = c.to_ascii_uppercase();
         if i > 0 {
             index = (index + 1) * 26;
         }
-        index += (c as usize) - ('A' as usize);
+        index += (upper as usize) - ('A' as usize);
     }
     Some(index)
 }
@@ -299,6 +300,14 @@ mod tests {
         for i in 0..100 {
             assert_eq!(col_label_to_index(&col_index_to_label(i)).unwrap(), i);
         }
+    }
+
+    #[test]
+    fn col_label_to_index_case_insensitive() {
+        assert_eq!(col_label_to_index("a"), Some(0));
+        assert_eq!(col_label_to_index("z"), Some(25));
+        assert_eq!(col_label_to_index("aA"), col_label_to_index("AA"));
+        assert_eq!(col_label_to_index("Bc"), col_label_to_index("BC"));
     }
 
     #[test]
