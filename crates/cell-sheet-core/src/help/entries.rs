@@ -589,6 +589,15 @@ pub static VISUAL_ENTRIES: &[HelpEntry] = &[
                  selection 5 rows down.",
     },
     HelpEntry {
+        tags: &["c-visual"],
+        category: HelpCategory::Visual,
+        summary: "Change selection",
+        detail: "Clear all cells in the visual selection and enter Insert mode\n\
+                 on the cursor cell to type new content. Unlike d, the cleared\n\
+                 contents are not stored in the register. The clear is a single\n\
+                 undo step.",
+    },
+    HelpEntry {
         tags: &["d-visual"],
         category: HelpCategory::Visual,
         summary: "Delete selection",

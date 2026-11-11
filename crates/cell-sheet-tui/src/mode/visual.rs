@@ -128,6 +128,7 @@ impl VisualState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cell_sheet_core::help::{HelpCategory, HelpRegistry};
     use crossterm::event::KeyModifiers;
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -320,5 +321,26 @@ mod tests {
                 op: CaseOp::ToggleAll,
             }
         );
+    }
+
+    // --- help registry coverage ------------------------------------------
+
+    // Keep in sync with the operator arms of `handle_key`: a new key there must be listed here.
+    const VISUAL_OPERATOR_KEYS: &[&str] = &["c", "d", "y", "u", "U", "~", "Esc"];
+
+    #[test]
+    fn every_visual_operator_has_help_entry() {
+        let registry = HelpRegistry::new();
+        for key in VISUAL_OPERATOR_KEYS {
+            let tag = format!("{key}-visual");
+            let entry = registry
+                .find(&tag)
+                .unwrap_or_else(|| panic!("missing help entry `{tag}` for visual key `{key}`"));
+            assert_eq!(
+                entry.category,
+                HelpCategory::Visual,
+                "help entry `{tag}` must be in the Visual category"
+            );
+        }
     }
 }
