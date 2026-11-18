@@ -6,6 +6,10 @@
 
 - `ROUND(number, [digits])` formula function (#119)
 
+### Fixed
+
+- CSV/TSV files whose rows have different numbers of fields now open, with the missing cells empty
+
 ## [0.5.1](https://github.com/garritfra/cell/compare/v0.5.0...v0.5.1) - 2026-06-29
 
 ### Added

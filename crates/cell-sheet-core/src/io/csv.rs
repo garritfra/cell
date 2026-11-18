@@ -33,6 +33,7 @@ pub fn read_csv<R: Read>(reader: R, delimiter: u8) -> Result<Sheet, Box<dyn std:
     let mut csv_reader = csv::ReaderBuilder::new()
         .has_headers(false)
         .delimiter(delimiter)
+        .flexible(true)
         .from_reader(reader);
 
     let mut max_col = 0usize;
@@ -182,6 +183,21 @@ mod tests {
         write_csv(&sheet, &mut buf, b',').unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "3\n");
+    }
+
+    #[test]
+    fn read_csv_rows_of_different_lengths() {
+        let sheet = read_csv("a,b,c\n1,2\n3,4,5,6\n".as_bytes(), b',').unwrap();
+        assert_eq!(sheet.col_count, 4);
+        assert_eq!(
+            sheet.get_cell((1, 1)).unwrap().value,
+            CellValue::Number(2.0)
+        );
+        assert!(sheet.get_cell((1, 2)).is_none());
+        assert_eq!(
+            sheet.get_cell((2, 3)).unwrap().value,
+            CellValue::Number(6.0)
+        );
     }
 
     #[test]
