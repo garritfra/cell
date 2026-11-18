@@ -6,6 +6,10 @@
 
 - `ROUND(number, [digits])` formula function (#119)
 
+### Fixed
+
+- saving a CSV/TSV keeps cells as they were written: leading zeros, a leading `+`, trailing decimal zeros and long IDs are no longer rewritten from the parsed number
+
 ## [0.5.1](https://github.com/garritfra/cell/compare/v0.5.0...v0.5.1) - 2026-06-29
 
 ### Added

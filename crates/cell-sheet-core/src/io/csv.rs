@@ -77,8 +77,11 @@ pub fn write_csv<W: Write>(
     for row in 0..sheet.row_count {
         let mut record = Vec::new();
         for col in 0..sheet.col_count {
+            // Text and numbers are written as read, so 02134 or 1234.50 survive a save;
+            // formulas are flattened to their value.
             let value = match sheet.get_cell((row, col)) {
-                Some(cell) => cell.value.to_string(),
+                Some(cell) if cell.raw.starts_with('=') => cell.value.to_string(),
+                Some(cell) => cell.raw.clone(),
                 None => String::new(),
             };
             record.push(value);
@@ -182,6 +185,15 @@ mod tests {
         write_csv(&sheet, &mut buf, b',').unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "3\n");
+    }
+
+    #[test]
+    fn write_csv_keeps_cell_text() {
+        let data = "02134,+4915112345678,1234.50,1234567890123456789\n";
+        let sheet = read_csv(data.as_bytes(), b',').unwrap();
+        let mut buf = Vec::new();
+        write_csv(&sheet, &mut buf, b',').unwrap();
+        assert_eq!(String::from_utf8(buf).unwrap(), data);
     }
 
     #[test]
