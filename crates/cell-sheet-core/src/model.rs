@@ -133,6 +133,9 @@ impl Sheet {
                 (Some(CellValue::Number(na)), Some(CellValue::Number(nb))) => {
                     na.partial_cmp(nb).unwrap_or(std::cmp::Ordering::Equal)
                 }
+                // Numbers before other values, so the order stays total in mixed columns.
+                (Some(CellValue::Number(_)), Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), Some(CellValue::Number(_))) => std::cmp::Ordering::Greater,
                 (Some(va), Some(vb)) => va.to_string().cmp(&vb.to_string()),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -354,5 +357,28 @@ mod tests {
             sheet.get_cell((2, 0)).unwrap().value,
             CellValue::Number(100.0)
         );
+    }
+
+    #[test]
+    fn sheet_sort_mixed_numbers_and_text() {
+        let raws = [
+            "5 kg", "45", "63", "43", "3", "26", "27", "93", "197", "172", "145", "4", "72", "169",
+            "16", "40", "1", "61", "85", "72", "177", "105", "154", "65", "12 pcs",
+        ];
+        let mut sheet = Sheet::new();
+        for (row, raw) in raws.iter().enumerate() {
+            sheet.set_cell((row, 0), raw);
+        }
+        sheet.sort_by_column(0, true);
+        assert_eq!(
+            sheet.get_cell((0, 0)).unwrap().value,
+            CellValue::Number(1.0)
+        );
+        assert_eq!(
+            sheet.get_cell((22, 0)).unwrap().value,
+            CellValue::Number(197.0)
+        );
+        assert_eq!(sheet.get_cell((23, 0)).unwrap().raw, "12 pcs");
+        assert_eq!(sheet.get_cell((24, 0)).unwrap().raw, "5 kg");
     }
 }
